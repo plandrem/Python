@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "C:\Python27\lib\site-packages\spyderlib\spyder.py", line 1920, in main
+    mainwindow = run_spyder(app, options)
+  File "C:\Python27\lib\site-packages\spyderlib\spyder.py", line 1832, in run_spyder
+    main.setup()
+  File "C:\Python27\lib\site-packages\spyderlib\spyder.py", line 689, in setup
+    self.extconsole = ExternalConsole(self, light_mode=self.light)
+  File "C:\Python27\lib\site-packages\spyderlib\plugins\externalconsole.py", line 460, in __init__
+    not self.get_option('pythonstartup/default'))
+  File "C:\Python27\lib\site-packages\spyderlib\plugins\__init__.py", line 210, in set_option
+    CONF.set(self.CONF_SECTION, str(option), value)
+  File "C:\Python27\lib\site-packages\spyderlib\userconfig.py", line 310, in set
+    self.__save()
+  File "C:\Python27\lib\site-packages\spyderlib\userconfig.py", line 154, in __save
+    conf_file = file(self.filename(),'w')
+IOError: [Errno 22] invalid mode ('w') or filename: 'C:\\Users\\Patrick\\.spyder2\\.spyder.ini'
