@@ -200,43 +200,58 @@ def FF(wl, dipoles, Ps, R=1e9,res=10):
       
 def main():
 
+  '''
+  Simulation Parameters
+  '''
+
   wl = 400
   
+  # Resonator Properties
   AR = 1  # height / width
   w = 208
   h = w * AR
   l = 200*wl
 
+  # Mode indices
   m = 3
   n = 3
 
-  res = 15
+  # Simulation Grid
   fieldRes = 30
-  zres = 30
+  FFres = 100
+  a = wl/10. # dipole lattice spacing
 
-  x = np.linspace(-w/2.,w/2.,res)
-  y = np.linspace(-w/2.,w/2.,res)
-  z = np.linspace(-l/2.,l/2.,zres)
-  # z = [0]
+  '''
+  Get Dipole positions and polarizations
+  '''
 
-  # X,Y = np.meshgrid(x,y)
+  x = np.arange(-w/2.,w/2.,a)
+  y = np.arange(-h/2.,h/2.,a)
+  z = np.arange(-l/2.,l/2.,a)
+
+  print 'Number of Dipoles = %u' % (len(x)*len(y)*len(z))
+
   dipoles = [[i,j,k] for i in x for j in y for k in z]
   dipoles = np.array(dipoles)
 
   amplitude = sin(m*pi/w * (dipoles[:,0]+w/2.)) * sin(n*pi/h * (dipoles[:,1]+h/2.))
   Ps = [np.array([0,0,a]) for a in amplitude]
 
+  '''
+  FF plot
+  '''
 
-  # FF plot
-  # theta, P = FF(wl,dip_x,dip_y,amps)
-  theta, pwr = FF(wl,dipoles,Ps,R=10*wl,res=100)
+  theta, pwr = FF(wl,dipoles,Ps,R=10*wl,res=FFres)
 
   plt.figure()
   plt.subplot(111,polar=True)
   plt.gca().grid(True)
   plt.plot(theta,pwr,color='r',lw=2)
 
-  # Dipole Arrangement
+  '''
+  Plot Dipole Arrangement
+  '''
+
   # plt.figure()
   # plt.imshow(amplitude.reshape(res,res), extent = putil.getExtent(x,y))
   
