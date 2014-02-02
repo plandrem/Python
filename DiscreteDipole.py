@@ -38,29 +38,42 @@ def dipoleRadiation(wl,P,r):
     # create copies of P for each vector in r
     P = np.tile(P,(n,1))
 
+  elif len(np.shape(r)) == 2: # list of vectors
+    dim = 1
+    axis = 1
+    shape = r.shape
+
   else:
     dim =1
     axis=0
 
-  
   k = 2*pi/wl
-  if dim==2: 
-    d = np.array([np.linalg.norm(i) for i in r])
-    d = np.vstack([d,d,d]).T
-  else:
-    d = np.linalg.norm(r)
 
+  d = np.linalg.norm(r,axis=axis)
+  d = np.tile(d,(3,1)).T
+
+  # if axis==1: 
+  #   # d = np.array([np.linalg.norm(i) for i in r])
+  #   # d = np.vstack([d,d,d]).T
+  #   # d = np.
+  # else:
+  #   d = np.linalg.norm(r)
+
+  # compute vector products
   rxP = np.cross(r,P)
   rxrxP = np.cross(r,rxP)
 
   rdotP = np.sum(r*P,axis=axis)
-  if dim == 2: rdotP = rdotP.reshape(len(rdotP),1)
+  if axis==1: rdotP = rdotP.reshape(len(rdotP),1)
 
-  if d == 0:
-    E = np.nan
-  else:
-    E = exp(1j*k*d)/d**3 * (k**2*rxrxP + (1-1j*k*d)/d**2 * (d**2*P - 3*r*rdotP))
+  # compute electric field
+  # if d == 0:
+  #   E = np.nan
+  # else:
+  #   E = exp(1j*k*d)/d**3 * (k**2*rxrxP + (1-1j*k*d)/d**2 * (d**2*P - 3*r*rdotP))
+  E = exp(1j*k*d)/d**3 * (k**2*rxrxP + (1-1j*k*d)/d**2 * (d**2*P - 3*r*rdotP))
 
+  # match input data arrangement
   if dim == 2:
     E = E.reshape(shape)
 
@@ -119,14 +132,17 @@ def addDipoles(wl,dipoles,Ps,target):
   '''
   given a list of dipole coordinates and polarizations (Ps), calculate the vector E field at target
   coordinates.
+
+  dipoles and Ps are Nx3 lists of cartesian coordinates
+  target is a 3-vector
   '''
 
-  E = np.zeros(3,dtype=complex)
+  E = np.zeros((3),dtype=complex)
 
-  for i,d in enumerate(dipoles):
-    r = target - d
+  ts = np.tile(target,(dipoles.shape[0],1))
+  rs = ts-dipoles
 
-    E += dipoleRadiation(wl,Ps[i],r)
+  E = np.sum(dipoleRadiation(wl,Ps,rs),axis=0)
 
   return E
 
@@ -196,7 +212,7 @@ def main():
 
   res = 15
   fieldRes = 30
-  zres = 3
+  zres = 30
 
   x = np.linspace(-w/2.,w/2.,res)
   y = np.linspace(-w/2.,w/2.,res)
@@ -234,3 +250,4 @@ if __name__ == '__main__':
   # test_FF()
   main()
   # test_addDipoles()
+  # test_dipoleRadiation()
