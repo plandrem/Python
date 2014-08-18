@@ -14,6 +14,7 @@ from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
 
 pi = sp.pi
 sqrt = sp.emath.sqrt
+ln = sp.log
 
 colors = ['r','g','b','#FFE21A','c','m']
 
@@ -175,11 +176,144 @@ def tempPlot():
 
 
     plt.show()
-      
+
+def SimpleResistor():
+  '''
+  Steady state model of the following stack:
+
+  GST
+  Al2O3
+  Al
+  Quartz
+
+  2D spreading is assumed in the Al and Quartz layers. Shape factor for a NW is taken as S = 4L / ln( 8d / pi*w )
+  (from Goodson, K. E., Flik, M.I., Su, L. T., and Antoniadis, D. A., 1993, "Annealing-Temperature Dependence of the 
+    Thermal Conductivity of LPCVD Silicon-Dioxide Layers," IEEE Electron Device Lett., Vol. 14, pp. 490-492.)
+
+  '''
+
+  ln = sp.log
+  
+  # Layer depths (m)    
+  d_gst    = 200 * 1e-9
+  d_al     = 300 * 1e-9
+  d_al2o3  = 20  * 1e-9
+  d_quartz = 500 * 1e-9
+
+  # Layer conductivites [W/mK]
+  k_gst    = 0.4
+  k_al     = 300
+  k_al2o3  = 30
+  k_quartz = 1
+
+  w  = 500 * 1e-9 # width of nw
+  w2 = 10000 * 1e-9 # effective width after spreading in Al layer
+
+  L = 100e-6 # Length of device -- should get normalized out somewhere
+
+  To = 1400
+
+  r_gst   = d_gst  /(k_gst   * w * L)
+  r_al2o3 = d_al2o3/(k_al2o3 * w * L)
+
+  r_al     = ln(8*d_al    /(pi*w ))/(4*L*k_al    )
+  r_quartz = ln(8*d_quartz/(pi*w2))/(4*L*k_quartz)
+
+  rs = [r_gst,r_al,r_al2o3,r_quartz]
+  rs = np.array(rs)
+
+  R = sum(rs)
+
+  q = To/R
+
+  # t_layer := temperature at top surface of layer
+
+  t_al2o3  = To      - q*r_gst
+  t_al     = t_al2o3 - q*r_al2o3
+  t_quartz = t_al    - q*r_al
+
+  print 'Temperature Profile:'
+  print 'GST:', To
+  print 'Al2O3:', t_al2o3
+  print 'Al:', t_al
+  print 'Quartz:', t_quartz
+  # print q*r_quartz
+  print 
+  print rs
+
+def FinCapacitance():
+  
+  # Geometry
+
+  w   = 500e-9
+  h   = 200e-9
+  dal2o3 = 20e-9
+  dox = 200e-9
+  dcu = 100e-9
+
+
+  # Copper
+
+  pcu = 8960 #kg/m^3
+  ccu = 390  #J/kgK
+  kcu = 300  #W/mK
+
+  # SiO2
+
+  pox = 2650
+  cox = 840
+  kox = 1
+
+  # GST
+
+  pgst = 6000
+  cgst = 216
+  kgst = 0.4
+
+  # Al2O3
+
+  kal2o3 = 10
+
+  # Healing Length
+
+  L = sqrt(dox*dcu*kcu/kox)
+
+  # Volumes
+
+  vgst = w*h
+  vcu = dcu*2*(L+w/2.)
+  vox = dox*2*(L+w/2.)
+
+  # Capacitance
+
+  Cgst = pgst*vgst*cgst
+  Cox = pox*vox*cox
+  Ccu = pcu*vcu*ccu
+
+  # Resistance
+
+  Rgst = h/(kgst*w)
+  Ral2o3 = dal2o3/(kal2o3*w)
+  Rcu = L/(kcu*dcu)
+  Rox = dox/(kox*2*(w/2.+L))
+
+  print L
+  print 'Capacitance'
+  print Cgst, Cox, Ccu, Cox/40.
+  print 'Resistance'
+  print Rgst, Rox, Rcu, Ral2o3
+
+def HeaterCurrent(k=100,h=100e-9,w=2e-6,T=700,p=1.68e-8,ds=5e-4):
+  print 'R/um:', p*1e-6/(w*h)
+  return sqrt(4*k*h*w*T/(p*ln(8*ds/(pi*w))))
+
 
 def main():
   # simpleTemp()
-  tempPlot()
+  # tempPlot()
+  # SimpleResistor()
+  # FinCapacitance()
+  print HeaterCurrent(w=1e-6)
   return 0
 
 if __name__ == '__main__':

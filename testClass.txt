@@ -1,0 +1,26 @@
+
+HEADER 600;  # version
+BGNLIB;
+  LASTMOD  {2014-3-7  10:40:50};  # last modification time
+  LASTACC  {2014-3-7  10:40:50};  # last access time
+LIBNAME LIB;
+UNITS;
+  USERUNITS 1.0;
+  PHYSUNITS 1.0000000000000002E-6;
+
+BGNSTR;  # Begin of structure
+  CREATION {2014-3-7  10:40:50};  # creation time
+  LASTMOD  {2014-3-7  10:40:50};  # last modification time
+STRNAME Contacts;
+
+BOUNDARY; 
+LAYER 1;
+DATATYPE 0;
+XY 5;
+  X: -5.000;			 Y: -5.000;
+  X: 5.000;			 Y: -5.000;
+  X: 5.000;			 Y: 5.000;
+  X: -5.000;			 Y: 5.000;
+  X: -5.000;			 Y: -5.000;
+ENDEL;
+

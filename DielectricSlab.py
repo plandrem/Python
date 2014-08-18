@@ -107,8 +107,13 @@ def phase(d,pol='TM',mode=0,n=4,nsub=1):
 	
 	angle = np.angle(R_data[poli,ni,mi,nsi,:],deg=True)
 	interp = interp1d(R_ds,angle,kind='cubic')
+
+	p = interp(d)
+
+	nclad = 1
+	p = guidedOnly(p,n,nclad,d,mode,pol=pol,nsub=nsub)
 	
-	return interp(d)
+	return p
 	
 def example_phase():
 
@@ -127,6 +132,26 @@ def example_phase():
 	plt.xlabel(r'Height/$\lambda$')
 	plt.ylabel(r'Angle(R) (Rad/$\pi$)')
 	plt.legend((r'$n_{core}$ = 2',r'$n_{core}$ = 4',r'$n_{core}$ = 8'))
+	plt.show()
+
+def example_phase_vs_mode():
+
+	plt.figure(figsize=(6,5))
+	
+	xs = np.linspace(0.02,3,1000)
+	
+	for mi,m in enumerate([0,1,2,3]):
+		ys = phase(xs,pol='TM',mode=mi,n=4)/180
+
+		plt.plot(xs,ys,color=colors[mi],lw=2)
+
+	plt.ylim(0,1)
+	plt.title('Reflection Phase')
+	plt.xlabel(r'Height/$\lambda$')
+	plt.ylabel(r'Angle(R) (Rad/$\pi$)')
+
+	leg = ['m = ' + str(x) for x in range(4)]
+	plt.legend(leg,loc='best')
 	plt.show()
 
 def effect_of_mirrors_on_phase():
@@ -169,6 +194,26 @@ def effect_of_mirrors_on_R():
 	plt.legend((r'$n_{sub}$ = 1',r'$n_{sub}$ = 2'))
 	plt.show()
 
+def guidedOnly(data,n,nclad,d,mode,pol,nsub):
+	'''
+	Take some input array of data corresponding to different thicknesses and eliminate
+	any data associated with modes below cutoff
+
+	Note about mode order -- Beta assumes 1 as the fundamental, while the RCWA methods use 0.  This
+	function primarily interfaces with RCWA, and thus uses the 1-indexed convention
+	'''
+
+	
+	bs = getBetas(n,nclad,d,[mode+1],pol=pol,nsub=nsub)[:,0,0]
+
+	mask = np.isnan(bs)
+
+	data[np.nonzero(mask)]=np.nan
+
+	return data
+
+
+
 def Ref(d,pol='TM',mode=0,n=4,nsub=1):
 	'''
 	returns reflection magnitude as a function of waveguide thickness (units of high index wavelength)
@@ -188,50 +233,14 @@ def Ref(d,pol='TM',mode=0,n=4,nsub=1):
 	mag = abs(R_data[poli,ni,mi,nsi,:])
 	interp = interp1d(R_ds,mag,kind='cubic')
 
-	'''
-	if mode==0:
-		if pol=='TM':
-			mag = abs(R_TM)
-		else:
-			mag = abs(R_TE)
-		
-		interp = interp1d(R_ds,mag,kind='cubic')
-		
-	elif mode==1:
-		if pol=='TM':
-			mag = abs(R_TM1)
-		else:
-			mag = abs(R_TE1)
-		
-		interp = interp1d(R_ds1,mag,kind='cubic')
-		
-	elif mode==2:
-		if pol=='TM':
-			mag = abs(R_TM2)
-		else:
-			mag = abs(R_TE2)
-		
-		interp = interp1d(R_ds2,mag,kind='cubic')
-		
-	elif mode==3:
-		if pol=='TM':
-			mag = abs(R_TM3)
-		else:
-			mag = abs(R_TE3)
-		
-		interp = interp1d(R_ds3,mag,kind='cubic')
-	'''
+	R = interp(d)
 
-	'''
-	xs = np.linspace(0.02,3,1000)
-	ys = interp(xs)
+	# check that beta exists for the intended waveguide/mode
 
-	plt.plot(ds,angle,'ro')
-	plt.plot(xs,ys,'k-')
-	plt.show()
-	'''
+	nclad = 1
+	R = guidedOnly(R,n,nclad,d,mode,pol=pol,nsub=nsub)
 	
-	return interp(d)
+	return R
 	
 def example_Ref():
 
@@ -279,6 +288,32 @@ def example_Ref_high_Mx():
 	plt.xlabel(r'Height/$\lambda$')
 	plt.ylabel('|R|')
 	plt.show()
+
+def example_Ref_vs_mode():
+
+	plt.figure(figsize=(6,5))
+	
+	n = 4
+	
+	xs = np.linspace(0.02,3,1000)
+
+	for mi,m in enumerate([0,1,2,3]):
+		ys = Ref(xs,pol='TM',n=n,mode=m,nsub=1)
+	
+		planar_r = (n-1)/(n+1)
+	
+		plt.plot(xs,ys,color=colors[mi],lw=2)
+		# plt.axhline(planar_r, color=colors[ni],linestyle='--')
+		
+	plt.ylim(0,1)
+	plt.title('Reflection Magnitude (TM, n = 4)')
+	plt.xlabel(r'Height/$\lambda$')
+	plt.ylabel('|R|')
+
+	leg = ['m = ' + str(x) for x in range(4)]
+	plt.legend(leg,loc='best')
+	plt.show()
+
 	
 def Finesse(d,pol='TM',m=1):
 	
@@ -303,6 +338,7 @@ def Beta(ncore,nclad,d,m,pol='TE',nsub=1,debug=False):
 	'''
 	k = 2*pi	#note that wl is omitted since k*height = 2*pi*height/wl = 2*pi*d
 	
+	# Find Critical Angle and Brewster's Angles
 	#convention: smaller number refers to smaller theta using Saleh's backwards theta convention
 	tc1 = pi/2. - np.amax([sp.arcsin(nclad/ncore),sp.arcsin(nsub/ncore)])
 	tc2 = pi/2. - np.amin([sp.arcsin(nclad/ncore),sp.arcsin(nsub/ncore)])
@@ -310,9 +346,11 @@ def Beta(ncore,nclad,d,m,pol='TE',nsub=1,debug=False):
 	tb1 = pi/2. - np.amax([sp.arctan(nclad/ncore),sp.arctan(nsub/ncore)])
 	tb2 = pi/2. - np.amin([sp.arctan(nclad/ncore),sp.arctan(nsub/ncore)])
 	
+	# Compute phase pickup from reflections
 	phi1 = lambda x: getPhi(ncore,nclad,sp.arcsin(x),pol=pol)
 	phi2 = lambda x: getPhi(ncore,nsub ,sp.arcsin(x),pol=pol)
 	
+	# The Transcendental Equation
 	F = lambda x: k*d*x - (m)*pi + phi1(x)/2. + phi2(x)/2. # x is sin(theta)
 	
 	sinths = np.ones(5) * np.nan	#list of sin(theta) values for guided + leaky modes (4 potential types of leaky mode)
@@ -363,45 +401,6 @@ def Beta(ncore,nclad,d,m,pol='TE',nsub=1,debug=False):
 
 
 	return betas
-	
-	"""
-	
-		
-	Fx = F(st)
-	
-	if m>-1:
-		print m
-		print nsub
-				
-		plt.plot(st,Fx/pi)
-		plt.axhline(0,color='k')
-		
-		plt.figure()
-		plt.plot(st,np.sign(Fx))
-		
-		plt.figure()
-		plt.plot(np.diff(np.sign(Fx)),'ro')
-		plt.show()
-		exit()
-
-
-	#sinth = brentq(F,x0,x1)
-	#print 'begin minimization...'
-	#sinth = minimize(F,sp.sin(tc1)).x
-	#print 'end minimization.'
-	
-	'''
-	Zero-finding scheme: obtain the first index where the resonance condition changes sign.  The second crossing is likely due to
-	the discontinuity associated with the pi phase shift at the brewster's angle.
-	'''
-	ist = np.amin(np.nonzero(np.diff(np.sign(Fx))))
-
-	theta = sp.arcsin(st[ist])
-		
-	beta = ncore*2*pi*sp.cos(theta)
-		
-	return beta
-	"""
 	
 	
 def getPhi(ncore,nclad,theta,pol='TM',debug=False):
@@ -508,6 +507,8 @@ def getBetas(ncore,nclad,ds,ms,pol='TE',nsub=None):
 	'''
 	Returns 3d array of Betas.
 	Indices (0,1,2) refer to (thickness, mode number, modal region)
+
+	"modal region" is eg. guided, leaky in cover, leaky in sub, etc.
 	
 	INPUTS:
 	ncore,nclad,nsub - refractive indices
@@ -554,18 +555,18 @@ def example_neff():
 	
 
 def rect_cavity_modes(ncore = 4,
-					  nclad = 1,
-					  nsub  = None,
-					  ds	= np.linspace(0.02,3,100),
-					  pol	= 'TM',
-					  ms	= np.array([1,2,3,4,5]),
-					  wmodes= 7,
-					  leaky = False,
-					  usePhase = True,
-					  linemap   = False,
-					  colormap  = True
-					  ):
-	
+  nclad = 1,
+  nsub  = None,
+  ds	= np.linspace(0.02,3,100),
+  pol	= 'TM',
+  ms	= np.array([1,2,3,4,5]),
+  wmodes= 7,
+  leaky = False,
+  usePhase = True,
+  linemap   = False,
+  colormap  = True
+  ):
+
 	'''
 	Plots map of resonant locations based on resonator width and height (each normalized by high-index wavelength.
 	
@@ -587,7 +588,7 @@ def rect_cavity_modes(ncore = 4,
 	w : 4D matrix of resonant widths [slab thickness d, lateral mode #, waveguide mode order m, mode type 0-5]
 	
 	'''
-		
+							
 	if nsub==None: nsub=nclad
 
 	# Get beta values
@@ -857,8 +858,8 @@ def example_wk():
 	plt.plot(ws/c*ncore,ws,'k-',lw=2)
 	
 	#light lines for brewsters angles
-#	tbc = arctan(nclad/ncore)
-#	tbs = arctan(nsub /ncore)
+	# tbc = arctan(nclad/ncore)
+	# tbs = arctan(nsub /ncore)
 	tbc = arctan(ncore/nclad)
 	tbs = arctan(ncore/nsub)
 	
@@ -1028,12 +1029,13 @@ def overlay(modes='horizontal',asym=False,noLines=True):
 	plt.show()
 	
 def effective_index_method(ncore=4,
-						   nclad=1,
-						   nsub=1,
-						   ds=np.linspace(0.02,3,100),
-						   ms=np.arange(1) + 1,
-						   pol='TE'
-						   ):
+	nclad=1,
+	nsub=1,
+	ds=np.linspace(0.02,3,100),
+	ms=np.arange(1) + 1,
+	pol='TE'
+	):
+
 	'''
 	Computes reflection coefficient going from a layer having index neff to a layer of nclad.
 	Used to approximate Q and phase pickup in resonators.
@@ -1359,8 +1361,8 @@ if __name__ == '__main__':
 	#rect_cavity_modes()
 	#effect_of_index()
 	#effect_of_substrate()
-	#example_neff()
-	#example_Ref()
+	# example_neff()
+	# example_Ref()
 	#example_phase()
 	#example_theta()
 	#example_phi()
@@ -1370,9 +1372,11 @@ if __name__ == '__main__':
 	#example_wk()
 	#example_Attenuation_single()
 	#example_Attenuation()
-	overlay()
+	# overlay()
 	#example_effective_index_method()
 	#compare_rcwa_effective_index()
-	#effect_of_mirrors_on_phase()
-	#effect_of_mirrors_on_R()
-	#example_Ref_high_Mx()
+	# effect_of_mirrors_on_phase()
+	# effect_of_mirrors_on_R()
+	# example_Ref_high_Mx()
+	example_Ref_vs_mode()
+	# example_phase_vs_mode()

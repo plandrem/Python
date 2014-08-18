@@ -5,6 +5,8 @@ from __future__ import division
 import numpy as np
 import scipy as sp
 from matplotlib import pyplot as plt
+import matplotlib as mpl
+
 
 import sys
 import os
@@ -12,6 +14,23 @@ import time
 
 from scipy import cos, sin, pi
 from scipy.stats import linregress
+from scipy.interpolate import interp1d
+
+PATH = '/Users/Patrick/Documents/PhD/'
+DATA_PATH = PATH + '/DATA/'
+
+'''
+Constants
+'''
+
+h = 6.62606957e-34
+c = 299792458
+q = 1.602176565e-19
+
+'''
+Color scales for line plots
+'''
+greens = ['k','#106B00','#148700','#19A800','#1FCC00','#24F000','#77F062','#B0F2A5']
 
 class LinReg:
 	'''
@@ -172,12 +191,284 @@ def getClosestIndex(array,target):
 	'''
 	return np.abs(array-target).argmin()
 	
+def PlotSeries(xs,yarray,cmap='RdYlBu',ax=None):
+	'''
+	display an array of data as lines using matplotlib colormaps
+	'''
+
+	if ax == None:
+		plt.figure()
+		ax = plt.subplot(111)
+
+	n = np.shape(yarray)[1]
+	norm = mpl.colors.Normalize(vmin=0, vmax=n)
+	sm = mpl.cm.ScalarMappable(norm=norm,cmap=cmap)
+
+	print len(ax)
+
+	if len(ax)==1:
+		for i in range(n):
+			ax.plot(xs,yarray[:,i],color=sm.to_rgba(i),lw=2)
+
+	elif len(ax)>1: # "waterfall" stack of axes
+
+		if len(ax) != n:
+			print len(ax)
+			print n 
+			print 'PlotSeries: incorrect number of axes for data'
+
+		else:
+			for i in range(n):
+				ax[i].plot(xs,yarray[:,i],color=sm.to_rgba(i),lw=2)
+
+	return ax 
+
+def ev2nm(e):
+	J = e * q
+	nm = h*c/J * 1e9
+	return nm 
+
+def nm2ev(wl):
+	return h*c/(wl*q) * 1e9
+
+def loadAbajoData(material,units='wl'):
+	
+	matDict = {
+		'al'   :'abajo_aluminum_palik.dat',
+		'au'   :'abajo_gold_jc.dat',
+		'cu'   :'abajo_copper_jc.dat',
+		'co'   :'abajo_cobalt_jc.dat',
+		'pt'   :'abajo_platinum.dat',
+		'aSi'   :'abajo_aSi_palik.dat',
+		'al2o3':'abajo_alumina_palik.dat'
+	}
+
+	fname = matDict[material]
+
+	data = np.loadtxt(DATA_PATH + '/Materials/' + fname, skiprows=11)
+	
+	eV = data[:,0]
+	er = data[:,1]
+	ei = data[:,2]
+
+	wl = ev2nm(eV)
+
+	if units == 'wl':
+		# reverse order of elements to be monotonically increasing
+		wl = wl[::-1]
+		er = er[::-1]
+		ei = ei[::-1]
+
+	unitsDict = {
+			'wl':wl,
+			'ev':eV
+		}
+		
+	return unitsDict[units], er, ei
+
+def loadDatathiefData(fname):
+
+	data = np.loadtxt(DATA_PATH + '/Materials/' + fname, skiprows=1, delimiter=", ")
+
+	# sort data by x-coordinate
+	ind = data[:,0].argsort()
+
+	
+	x = data[:,0][ind]
+	y = data[:,1][ind]
+	
+	return x,y
 
 
-def main():
+def getEps(material,wl):
+	
+	if material == 'air': return np.ones(len(wl))
+
+	loaderDict = {
+		'al':loadAbajoData,
+		'au':loadAbajoData,
+		'co':loadAbajoData,
+		'cu':loadAbajoData,
+		'pt':loadAbajoData,
+		'al2o3':loadAbajoData,
+		'aSi':loadAbajoData,
+
+		'a-gete':loadEpsDatathief,
+		'c-gete':loadEpsDatathief,
+		'a-oldgete':loadEpsDatathief,
+		'c-oldgete':loadEpsDatathief,
+		'a-gst225':loadEpsDatathief,
+		'c-gst225':loadEpsDatathief,
+		'a-gst326':loadEpsGST326,
+		'c-gst326':loadEpsGST326
+	}
+
+	wls,er,ei = loaderDict[material](material)
+
+	# print np.amin(wls), np.amax(wls), wl
+	# print material
+	# print wls
+	# print er
+
+	# plot source data for reference
+	# plt.plot(wls, er, 'r')
+	# plt.plot(wls, ei, 'b')
+	# plt.show()
+
+	interp_er = interp1d(wls, er, kind='linear', bounds_error=False, fill_value=np.nan)
+	interp_ei = interp1d(wls, ei, kind='linear', bounds_error=False, fill_value=np.nan)
+
+	er2 = interp_er(wl)
+	ei2 = interp_ei(wl)
+
+	return er2 + 1j*ei2
+
+def getEpsDrude(m, wl):
+    """
+    Returns optical properties of ideal Drude metal
+    """
+    c = 3e8 # m/s
+    h = 6.626e-34 # J-s
+    q = 1.602e-19 # C
+    nm = 1e-9
+    
+    if m == 'Ag':
+        e0 = 5.
+        wp = 9.2#9.2159 # [eV]
+        gamma = 0.021#0.0212 # [eV]
+    elif m == 'Au':
+        e0 = 9.
+        wp = 9.#9.1
+        gamma = 0.066#0.072
+    elif m == 'Cu':
+    		e0 = 4.5
+    		wp = 1.34e16 * h/q
+    		gamma = 1/(6.9e-15) * h/q
+    else: print 'Invalid metal'
+    
+    w = (h * c) / (wl*nm * q)
+    
+    eps_real = e0 - (wp**2) / (w**2 + gamma**2)
+    eps_imag = gamma * wp**2 / w / (w**2 + gamma**2)
+    eps = eps_real - 1j*eps_imag
+        
+    return eps
+
+def loadEpsDatathief(material,units='wl'):
+
+	matDict = {
+		'a-gst225':['gst225_e1_a.txt','gst225_e2_a.txt'],
+		'c-gst225':['gst225_e1_c.txt','gst225_e2_c.txt'],
+		'a-gete'  :['gete_e1_a.txt','gete_e2_a.txt'],
+		'c-gete'  :['gete_e1_c.txt','gete_e2_c.txt'],
+		'a-oldgete'  :['old_gete/GeTe_a_real.txt','old_gete/GeTe_a_imag.txt'],
+		'c-oldgete'  :['old_gete/GeTe_c_real.txt','old_gete/GeTe_c_imag.txt']
+	}
+
+	fname_r = matDict[material][0]
+	fname_i = matDict[material][1]
+
+	xr,yr = loadDatathiefData(fname_r)
+	xi,yi = loadDatathiefData(fname_i)
+
+	# create common set of x values
+	xmin = np.amin(np.hstack([xr,xi]))
+	xmax = np.amax(np.hstack([xr,xi]))
+	x = np.linspace(xmin,xmax,1000)
+
+	interp_r = interp1d(xr, yr, kind=1, bounds_error=False, fill_value=np.nan)
+	interp_i = interp1d(xi, yi, kind=1, bounds_error=False, fill_value=np.nan)
+
+	er = interp_r(x)	
+	ei = interp_i(x)	
+	
+	eV = x
+
+	wl = ev2nm(eV)
+
+	if units == 'wl':
+		# reverse order of elements to be monotonically increasing
+		wl = wl[::-1]
+		er = er[::-1]
+		ei = ei[::-1]
+
+	unitsDict = {
+			'wl':wl,
+			'ev':eV
+		}
+		
+	return unitsDict[units], er, ei
+
+
+
+def example_getEps_GST():
+
+	ev = np.linspace(0.01,8,1000)
+	wl = ev2nm(ev)
+
+	# eps = getEps('c-gete',wl)
+	eps_225 = getEps('c-gst225',wl)
+	eps_326 = getEps('c-gst326',wl)
+
+	n_225 = sp.emath.sqrt(eps_225)
+	n_326 = sp.emath.sqrt(eps_326)
+
+	fig, ax = plt.subplots(2,figsize=(7,10),sharex=True)
+
+	ax[0].plot(wl,n_225.real,'r')
+	ax[0].plot(wl,n_326.real,'r:')
+
+	ax[1].plot(wl,n_225.imag,'b')
+	ax[1].plot(wl,n_326.imag,'b:')
+
+	plt.xlim(1500,6000)
+
+	plt.show()
 	
 	return 0
 
-if __name__ == '__main__':
-	main()
+def loadEpsGST326(material,units='wl'):
+	
+	'''
+	Data from Ann-Katrin's ellipsometry measurements
+	wl - wavelength in nm
+	'''
 
+	phase = material[0]
+	
+	asdep  = np.loadtxt(DATA_PATH + '/Materials/GST326_asdep_585nm_eps_SELFMADE.xy')
+	al_cry = np.loadtxt(DATA_PATH + '/Materials/GST326_al_cry_506nm_eps_SELFMADE.xy')
+	
+	step = 1
+	ev_a = asdep[::step,0]
+	e1_a = asdep[::step,1]
+	e2_a = asdep[::step,2]
+	
+	ev_c = al_cry[::step,0]
+	e1_c = al_cry[::step,1]
+	e2_c = al_cry[::step,2]
+	
+	eV = ev_a if phase=='a' else ev_c
+	er = e1_a if phase=='a' else e1_c
+	ei = e2_a if phase=='a' else e2_c
+
+	wl = ev2nm(eV)
+
+	if units == 'wl':
+		# reverse order of elements to be monotonically increasing
+		wl = wl[::-1]
+		er = er[::-1]
+		ei = ei[::-1]
+
+	unitsDict = {
+			'wl':wl,
+			'ev':eV
+		}
+		
+	return unitsDict[units], er, ei
+		
+	return e1 - e2*1j
+
+
+if __name__ == '__main__':
+	example_getEps_GST()
