@@ -175,7 +175,9 @@ def main():
 	Bo = B_modes[0]
 
 	# transverse wavevectors of continuum modes outside structure
-	ps = np.linspace(0,10*k,50)
+	ps = np.linspace(0,7*k,50)
+	if np.where(ps==k):								# avoid singularity at p = k (triggers B = 0 in denominator of Be)
+		ps[np.where(ps==k)] += 1e-15
 
 
 	# Initialize coefficients to zero
@@ -190,18 +192,16 @@ def main():
 		qt_i = np.array([QT(p,w,n,d,B_modes,am_i,qr_i,ps) for p in ps])
 		
 		am_i = np.array([AM(m,w,n,d,B_modes,qt_i,ps) for m in range(N)])
+		print am_i
 
 		qr_i = np.array([QR(p,w,n,d,qt_i,ps) for p in ps])
 
-	
-	# qts = np.array([qt_i(p) for p in ps])
-	# qrs = np.array([qr_i(p) for p in ps])
-
 	fig, ax = plt.subplots(2,figsize=(7,5))
 
-	ax[0].plot(ps,qt_i.real,'r')
-	ax[1].plot(ps,qr_i.real,'b')
-	ax[1].plot(ps,qr_i.imag,'b:')
+	ax[0].plot(ps/k,qt_i.real,'r')
+	ax[0].plot(ps/k,qt_i.imag,'r:')
+	ax[1].plot(ps/k,qr_i.real,'b')
+	ax[1].plot(ps/k,qr_i.imag,'b:')
 
 	ax[0].axhline(0,color='k',ls=':')
 	ax[1].axhline(0,color='k',ls=':')
@@ -270,6 +270,7 @@ def QT(p,w,n,d,B_modes,am,qr,ps):
 	
 	P = 1
 	k = w/c
+
 	Bo = B_modes[0]
 	Bc = lambda p: B_continuum(p,k)
 	Gm = lambda m,p: G(m,p,w,n,d,B_modes[m])
@@ -306,6 +307,7 @@ def QR(p,w,n,d,qt,ps):
 	P = 1
 
 	k = w/c
+	if p == k: return 0
 
 	Bc = lambda p2: B_continuum(p2,k)
 
