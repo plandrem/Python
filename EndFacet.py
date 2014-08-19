@@ -174,6 +174,10 @@ def main():
 	B_modes = beta_marcuse(n,d,pol='TE',Nmodes=N) # propagation constant
 	Bo = B_modes[0]
 
+	# transverse wavevectors of continuum modes outside structure
+	ps = np.linspace(0,1.5,100)
+
+
 	# Initialize coefficients to zero
 	an = np.zeros(N)
 	qr = 0
@@ -181,9 +185,9 @@ def main():
 	for i in range(100):
 
 		qt_i = lambda p: qt(p,w,n,d,B_modes,an,qr)
+		qts = np.array([qt_i(x) for x in ps])	
 
-	ps = np.linspace(0,1.5,100)
-	qts = np.array([qt_i(x) for x in ps])
+	
 
 	plt.plot(ps,qts.real,'r')
 	plt.show()
@@ -252,6 +256,38 @@ def qt(p,w,n,d,B_modes,an,qr):
 	Go = lambda p: G(0,p,w,n,d,Bo)
 
 	return 1/(2*w*mu*P) * abs(Bc) / (Bo + Bc) * (2*Bo*Go(p))
+
+def am(m,w,n,d,B_modes,qt,ps):
+
+	P = 1
+
+	k = w/c
+
+	Bm = B_modes[m]
+	Bc = lambda p: B_continuum(p,k)
+	Gm = lambda p: G(m,p,w,n,d,Bm)
+
+	integrand = lambda p: qt(p) * (Bm - Bc(p)) * Gm(p)
+	dp = ps[1]-ps[0]
+	integral = sum([integrand(p) * dp for p in ps])
+
+
+	return 1/(4*w*mu*P) * integral
+
+def qr(p,w,n,d,B_modes,qt,ps):
+
+	P = 1
+
+	k = w/c
+
+	Bc = lambda p2: B_continuum(p2,k)
+
+	integrand = lambda p2: qt(p2) * (Bc(p) - Bc(p2)) * F(p,p2,w,n,d)
+	dp2 = ps[1]-ps[0]
+	integral = sum([integrand(p2) * dp2 for p2 in ps])
+
+
+	return 1/(4*w*mu*P) * abs(Bc(p))/Bc(p) * integral
 
 def test_qt():
 
