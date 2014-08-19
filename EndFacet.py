@@ -213,22 +213,36 @@ def A(w,B,d,g):
 	P = 1
 	return sqrt(2*w*mu*P / (B*d + B/g))
 
-def Be(w,n,B,d,p):
+def Be(w,n,d,p):
 	# Amplitude Coefficient of continuum modes outside structure
 	P = 1
 	k = w/c
 	s = o(n,p,k)
+	B = B_continuum(p,k)
 
 	return sqrt(2*p**2*w*mu*P / (pi*B*(p**2*cos(s*d)**2 + s**2*sin(s*d)**2)))
 
-def G(m,p,w,n,d,B):
+def G(m,p,w,n,d,Bm):
 	k = w/c
 
-	Km = K(n,B,k)
-	gm = g(B,k)
-	Am = A(w,B,d,gm)
+	Km = K(n,Bm,k)
+	gm = g(Bm,k)
+	Am = A(w,Bm,d,gm)
 
 	return 2 * k**2 * (n**2-1) * Am * Be(w,n,B,d,p) * cos(Km*d) * (gm*cos(p*d) - p*sin(p*d) / (Km**2-p**2) / (gm**2 + p**2))
+
+def F(p,p2,w,n,d):
+	k = w/c
+
+	s = o(n,p,k)
+	s2 = o(n,p2,k)
+
+	if p == p2:
+		return 0
+
+	else:
+		return -k**2 * (sqrt(n)-1) * Be(w,n,d,p) * Be(w,n,d,p2) * (sin(s2+p)*d/(s+p) + sin(s2-p)/(s2-p)) / (p2**2 - p**2)
+
 
 def qt(p,w,n,d,B_modes,an,qr):
 	P = 1
