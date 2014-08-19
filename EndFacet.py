@@ -175,33 +175,33 @@ def main():
 	Bo = B_modes[0]
 
 	# transverse wavevectors of continuum modes outside structure
-	ps = np.linspace(0,10*k,5)
+	ps = np.linspace(0,10*k,50)
 
 
 	# Initialize coefficients to zero
 	am_i = np.zeros(N)
-	qr_i = lambda p: 0*p
+	qr_i = np.zeros(len(ps))
 
-	imax = 10
+	imax = 4
 	for i in range(imax):
 
 		print '\nComputing iteration %u of %u' % (i,imax)
 
-		qt_i = lambda p: QT(p,w,n,d,B_modes,am_i,qr_i,ps)
+		qt_i = np.array([QT(p,w,n,d,B_modes,am_i,qr_i,ps) for p in ps])
 		
-		am_i = [AM(m,w,n,d,B_modes,qt_i,ps) for m in range(N)]
+		am_i = np.array([AM(m,w,n,d,B_modes,qt_i,ps) for m in range(N)])
 
-		qr_i = lambda p: QR(p,w,n,d,qt_i,ps)
+		qr_i = np.array([QR(p,w,n,d,qt_i,ps) for p in ps])
 
 	
-	qts = np.array([qt_i(p) for p in ps])
-	qrs = np.array([qr_i(p) for p in ps])
+	# qts = np.array([qt_i(p) for p in ps])
+	# qrs = np.array([qr_i(p) for p in ps])
 
 	fig, ax = plt.subplots(2,figsize=(7,5))
 
-	ax[0].plot(ps,qts.real,'r')
-	ax[1].plot(ps,qrs.real,'b')
-	ax[1].plot(ps,qrs.imag,'b:')
+	ax[0].plot(ps,qt_i.real,'r')
+	ax[1].plot(ps,qr_i.real,'b')
+	ax[1].plot(ps,qr_i.imag,'b:')
 
 	ax[0].axhline(0,color='k',ls=':')
 	ax[1].axhline(0,color='k',ls=':')
@@ -267,23 +267,24 @@ def F(p,p2,w,n,d):
 
 
 def QT(p,w,n,d,B_modes,am,qr,ps):
-	print 'qt'
+	
 	P = 1
 	k = w/c
 	Bo = B_modes[0]
 	Bc = lambda p: B_continuum(p,k)
 	Gm = lambda m,p: G(m,p,w,n,d,B_modes[m])
 
-	integrand = lambda p2: qr(p2) * (Bo - Bc(p2)) * F(p2,p,w,n,d)
-	dp2 = ps[1]-ps[0]
-	integral = sum([integrand(p2) * dp2 for p2 in ps])
+	Fpp2 = [F(p2,p,w,n,d) for p2 in ps]
+
+	integrand = qr * (Bo - Bc(ps)) * Fpp2
+	dp = ps[1]-ps[0]
+	integral = sum(integrand * dp)
 
 	sigma = sum(np.array([(Bo-B_modes[m])*am[m]*Gm(m,p) for m in range(len(B_modes))]))
 
 	return 1/(2*w*mu*P) * abs(Bc(p)) / (Bo + Bc(p)) * (2*Bo*Gm(0,p) + integral + sigma)
 
 def AM(m,w,n,d,B_modes,qt,ps):
-	print 'am'
 
 	P = 1
 
@@ -293,15 +294,14 @@ def AM(m,w,n,d,B_modes,qt,ps):
 	Bc = lambda p: B_continuum(p,k)
 	Gm = lambda p: G(m,p,w,n,d,Bm)
 
-	integrand = lambda p: qt(p) * (Bm - Bc(p)) * Gm(p)
+	integrand = qt * (Bm - Bc(ps)) * Gm(ps)
 	dp = ps[1]-ps[0]
-	integral = sum([integrand(p) * dp for p in ps])
+	integral = sum(integrand * dp)
 
 
 	return 1/(4*w*mu*P) * integral
 
 def QR(p,w,n,d,qt,ps):
-	print 'qr'
 
 	P = 1
 
@@ -309,9 +309,11 @@ def QR(p,w,n,d,qt,ps):
 
 	Bc = lambda p2: B_continuum(p2,k)
 
-	integrand = lambda p2: qt(p2) * (Bc(p) - Bc(p2)) * F(p,p2,w,n,d)
-	dp2 = ps[1]-ps[0]
-	integral = sum([integrand(p2) * dp2 for p2 in ps])
+	Fpp2 = [F(p,p2,w,n,d) for p2 in ps]
+
+	integrand = qt * (Bc(p) - Bc(ps)) * Fpp2
+	dp = ps[1]-ps[0]
+	integral = sum(integrand * dp)
 
 
 	return 1/(4*w*mu*P) * abs(Bc(p))/Bc(p) * integral
