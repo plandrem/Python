@@ -175,29 +175,38 @@ def main():
 	Bo = B_modes[0]
 
 	# transverse wavevectors of continuum modes outside structure
-	ps = np.linspace(0,10*k,100)
+	ps = np.linspace(0,10*k,5)
 
 
 	# Initialize coefficients to zero
 	am_i = np.zeros(N)
-	qr_i = 0
+	qr_i = lambda p: 0*p
 
-	# for i in range(100):
+	imax = 10
+	for i in range(imax):
 
-	qt_i = lambda p: qt(p,w,n,d,B_modes,am,qr)
-	
-	am_i = [am(m,w,n,d,B_modes,qt_i,ps) for m in range(N)]
+		print '\nComputing iteration %u of %u' % (i,imax)
 
-	qr_i = lambda p: qr(p,w,n,d,qt_i,ps)
+		qt_i = lambda p: QT(p,w,n,d,B_modes,am_i,qr_i,ps)
+		
+		am_i = [AM(m,w,n,d,B_modes,qt_i,ps) for m in range(N)]
+
+		qr_i = lambda p: QR(p,w,n,d,qt_i,ps)
 
 	
 	qts = np.array([qt_i(p) for p in ps])
 	qrs = np.array([qr_i(p) for p in ps])
 
-	plt.plot(ps,qts.real,'r')
-	plt.plot(ps,qrs.real,'r')
+	fig, ax = plt.subplots(2,figsize=(7,5))
+
+	ax[0].plot(ps,qts.real,'r')
+	ax[1].plot(ps,qrs.real,'b')
+	ax[1].plot(ps,qrs.imag,'b:')
+
+	ax[0].axhline(0,color='k',ls=':')
+	ax[1].axhline(0,color='k',ls=':')
 	
-	print am_i
+	
 
 	plt.show()
 
@@ -257,16 +266,24 @@ def F(p,p2,w,n,d):
 		return -k**2 * (sqrt(n)-1) * Be(w,n,d,p) * Be(w,n,d,p2) * (sin(s2+p)*d/(s+p) + sin(s2-p)/(s2-p)) / (p2**2 - p**2)
 
 
-def qt(p,w,n,d,B_modes,an,qr):
+def QT(p,w,n,d,B_modes,am,qr,ps):
+	print 'qt'
 	P = 1
 	k = w/c
 	Bo = B_modes[0]
-	Bc = B_continuum(p,k)
-	Go = lambda p: G(0,p,w,n,d,Bo)
+	Bc = lambda p: B_continuum(p,k)
+	Gm = lambda m,p: G(m,p,w,n,d,B_modes[m])
 
-	return 1/(2*w*mu*P) * abs(Bc) / (Bo + Bc) * (2*Bo*Go(p))
+	integrand = lambda p2: qr(p2) * (Bo - Bc(p2)) * F(p2,p,w,n,d)
+	dp2 = ps[1]-ps[0]
+	integral = sum([integrand(p2) * dp2 for p2 in ps])
 
-def am(m,w,n,d,B_modes,qt,ps):
+	sigma = sum(np.array([(Bo-B_modes[m])*am[m]*Gm(m,p) for m in range(len(B_modes))]))
+
+	return 1/(2*w*mu*P) * abs(Bc(p)) / (Bo + Bc(p)) * (2*Bo*Gm(0,p) + integral + sigma)
+
+def AM(m,w,n,d,B_modes,qt,ps):
+	print 'am'
 
 	P = 1
 
@@ -283,7 +300,8 @@ def am(m,w,n,d,B_modes,qt,ps):
 
 	return 1/(4*w*mu*P) * integral
 
-def qr(p,w,n,d,qt,ps):
+def QR(p,w,n,d,qt,ps):
+	print 'qr'
 
 	P = 1
 
