@@ -175,21 +175,30 @@ def main():
 	Bo = B_modes[0]
 
 	# transverse wavevectors of continuum modes outside structure
-	ps = np.linspace(0,1.5,100)
+	ps = np.linspace(0,10*k,100)
 
 
 	# Initialize coefficients to zero
-	an = np.zeros(N)
-	qr = 0
+	am_i = np.zeros(N)
+	qr_i = 0
 
-	for i in range(100):
+	# for i in range(100):
 
-		qt_i = lambda p: qt(p,w,n,d,B_modes,an,qr)
-		qts = np.array([qt_i(x) for x in ps])	
+	qt_i = lambda p: qt(p,w,n,d,B_modes,am,qr)
+	
+	am_i = [am(m,w,n,d,B_modes,qt_i,ps) for m in range(N)]
+
+	qr_i = lambda p: qr(p,w,n,d,qt_i,ps)
 
 	
+	qts = np.array([qt_i(p) for p in ps])
+	qrs = np.array([qr_i(p) for p in ps])
 
 	plt.plot(ps,qts.real,'r')
+	plt.plot(ps,qrs.real,'r')
+	
+	print am_i
+
 	plt.show()
 
 
@@ -233,7 +242,7 @@ def G(m,p,w,n,d,Bm):
 	gm = g(Bm,k)
 	Am = A(w,Bm,d,gm)
 
-	return 2 * k**2 * (n**2-1) * Am * Be(w,n,B,d,p) * cos(Km*d) * (gm*cos(p*d) - p*sin(p*d) / (Km**2-p**2) / (gm**2 + p**2))
+	return 2 * k**2 * (n**2-1) * Am * Be(w,n,d,p) * cos(Km*d) * (gm*cos(p*d) - p*sin(p*d) / (Km**2-p**2) / (gm**2 + p**2))
 
 def F(p,p2,w,n,d):
 	k = w/c
@@ -274,7 +283,7 @@ def am(m,w,n,d,B_modes,qt,ps):
 
 	return 1/(4*w*mu*P) * integral
 
-def qr(p,w,n,d,B_modes,qt,ps):
+def qr(p,w,n,d,qt,ps):
 
 	P = 1
 
