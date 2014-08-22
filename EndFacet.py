@@ -183,7 +183,7 @@ def main():
 	'''
 
 	# transverse wavevectors of continuum modes outside structure
-	ps = np.linspace(0,20*k,100)			# must be linear for integration
+	ps = np.linspace(0,20*k,50)			# must be linear for integration
 	if np.where(ps==k):								# avoid singularity at p = k (triggers B = 0 in denominator of Be)
 		ps[np.where(ps==k)] += 1e-15
 
@@ -192,7 +192,7 @@ def main():
 	am_i = np.zeros(N)
 	qr_i = np.zeros(len(ps))
 
-	imax = 2
+	imax = 1
 	for i in range(imax):
 
 		print '\nComputing iteration %u of %u' % (i+1,imax)
@@ -220,6 +220,10 @@ def main():
 
 	ax[0].axhline(0,color='k',ls=':')
 	ax[1].axhline(0,color='k',ls=':')
+
+	plt.figure()
+	plt.plot(ps_f,B_continuum(ps_f,k).real,'r')
+	plt.plot(ps_f,B_continuum(ps_f,k).imag,'b')
 
 	# ax[1].set_xlim(0,150)
 	
@@ -261,7 +265,7 @@ def Br(w,n,d,p):
 	s = o(n,p,k)
 	B = B_continuum(p,k)
 
-	return sqrt(2*p**2*w*mu*P / (pi*B*(p**2*cos(s*d)**2 + s**2*sin(s*d)**2)))
+	return sqrt(2*p**2*w*mu*P / (pi*abs(B)*(p**2*cos(s*d)**2 + s**2*sin(s*d)**2)))
 
 def Bt(w,p):
 	# Amplitude Coefficient of continuum modes in free space
@@ -270,7 +274,15 @@ def Bt(w,p):
 	P = 1
 	B = B_continuum(p,k)
 
-	return sqrt(2*P*w*mu / (pi*B))
+	return sqrt(2*P*w*mu / (pi*abs(B)))
+
+def Dr(p,w,n,d):
+	k = w/c
+	s = o(n,p,k)
+
+	if p == 0: return 0.5 * exp(-1j*p*d) * cos(s*d) 
+
+	return 0.5 * exp(-1j*p*d) * (cos(s*d) + 1j*s/p * sin(s*d))
 
 def G(m,p,w,n,d,Bm):
 	k = w/c
@@ -281,14 +293,14 @@ def G(m,p,w,n,d,Bm):
 
 	return 2 * k**2 * (n**2-1) * Am * Bt(w,p) * cos(Km*d) * (gm*cos(p*d) - p*sin(p*d)) / (Km**2-p**2) / (gm**2 + p**2)
 
-def F(p,p2,w,n,d):
+def F(p2,p,w,n,d):
 	k = w/c
 
 	s = o(n,p,k)
 	s2 = o(n,p2,k)
 
 	if p == p2:
-		return 0
+		return pi * Bt(w,p) * Br(w,n,d,p2) * (Dr(p2,w,n,d) + np.conjugate(Dr(p2,w,n,d)))
 
 	else:
 		return k**2 * (sqrt(n)-1) * Br(w,n,d,p2) * Bt(w,p) / (p2**2 - p**2) * ( (p*cos(s2*d)*sin(p*d) - s2*sin(s2*d)*cos(p*d))/(s2**2 - p**2) ) 
