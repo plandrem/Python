@@ -158,24 +158,32 @@ def main():
 	
 	# Define Waveguide Constants
 	n  = sqrt(20)
-	wl = 1
-
+	d = 1e-2
 	kd = 0.628
+	k = kd/d
 
-	k = 2*pi/wl
+	wl = 2*pi/k
 	w = c*k
-
-	d = kd/k
 
 	# for d in ds:
 
 	# get all waveguide modes supported by structure
 	N = numModes(n,1,2*d/wl)
-	B_modes = beta_marcuse(n,d,pol='TE',Nmodes=N) # propagation constant
+	B_modes = beta_marcuse(n,d,wl=wl,pol='TE',Nmodes=N) # propagation constant
 	Bo = B_modes[0]
 
+	'''
+	# Debugger for mode solver
+	wl = 2.0
+	k = 2*pi/wl
+	kd = 1.0
+	d = kd/k	
+	print beta_marcuse(1.432,d,wl=wl,pol='TE') * d
+	exit()
+	'''
+
 	# transverse wavevectors of continuum modes outside structure
-	ps = np.linspace(0,7*k,50)
+	ps = np.linspace(0,20*k,100)			# must be linear for integration
 	if np.where(ps==k):								# avoid singularity at p = k (triggers B = 0 in denominator of Be)
 		ps[np.where(ps==k)] += 1e-15
 
@@ -184,10 +192,10 @@ def main():
 	am_i = np.zeros(N)
 	qr_i = np.zeros(len(ps))
 
-	imax = 4
+	imax = 2
 	for i in range(imax):
 
-		print '\nComputing iteration %u of %u' % (i,imax)
+		print '\nComputing iteration %u of %u' % (i+1,imax)
 
 		qt_i = np.array([QT(p,w,n,d,B_modes,am_i,qr_i,ps) for p in ps])
 		
@@ -196,15 +204,24 @@ def main():
 
 		qr_i = np.array([QR(p,w,n,d,qt_i,ps) for p in ps])
 
-	fig, ax = plt.subplots(2,figsize=(7,5))
+	print '\nComputing q values for plot...'
 
-	ax[0].plot(ps/k,qt_i.real,'r')
-	ax[0].plot(ps/k,qt_i.imag,'r:')
-	ax[1].plot(ps/k,qr_i.real,'b')
-	ax[1].plot(ps/k,qr_i.imag,'b:')
+	ps_f = np.linspace(0,150,100)
+	qt_f = np.array([QT(p,w,n,d,B_modes,am_i,qr_i,ps) for p in ps_f])
+	qr_f = np.array([QR(p,w,n,d,qt_i,ps) for p in ps_f])
+	
+
+	fig, ax = plt.subplots(2,figsize=(7,5),sharex=True)
+
+	ax[0].plot(ps_f,qt_f.real,'r')
+	ax[0].plot(ps_f,qt_f.imag,'r:')
+	ax[1].plot(ps_f,qr_f.real,'b')
+	ax[1].plot(ps_f,qr_f.imag,'b:')
 
 	ax[0].axhline(0,color='k',ls=':')
 	ax[1].axhline(0,color='k',ls=':')
+
+	# ax[1].set_xlim(0,150)
 	
 	
 
@@ -220,7 +237,9 @@ def B_continuum(p,k):
 
 def o(n,p,k):
 	# transverse wavevector inside structure for continuum modes
-	return sqrt((n*k)**2 - p**2)
+
+	B = B_continuum(p,k)
+	return sqrt((n*k)**2 - B**2)
 
 def g(B,k):
 	# transverse wavevector outside structure for guided modes
@@ -228,14 +247,14 @@ def g(B,k):
 
 def K(n,B,k):
 	# transverse wavevector inside structure for guided modes
-	return sqrt(B**2 - (n*k)**2)	
+	return sqrt((n*k)**2 - B**2)	
 
 def A(w,B,d,g):
 	# Amplitude Coefficient of guided modes
 	P = 1
 	return sqrt(2*w*mu*P / (B*d + B/g))
 
-def Be(w,n,d,p):
+def Br(w,n,d,p):
 	# Amplitude Coefficient of continuum modes outside structure
 	P = 1
 	k = w/c
@@ -244,6 +263,15 @@ def Be(w,n,d,p):
 
 	return sqrt(2*p**2*w*mu*P / (pi*B*(p**2*cos(s*d)**2 + s**2*sin(s*d)**2)))
 
+def Bt(w,p):
+	# Amplitude Coefficient of continuum modes in free space
+
+	k = w/c
+	P = 1
+	B = B_continuum(p,k)
+
+	return sqrt(2*P*w*mu / (pi*B))
+
 def G(m,p,w,n,d,Bm):
 	k = w/c
 
@@ -251,7 +279,7 @@ def G(m,p,w,n,d,Bm):
 	gm = g(Bm,k)
 	Am = A(w,Bm,d,gm)
 
-	return 2 * k**2 * (n**2-1) * Am * Be(w,n,d,p) * cos(Km*d) * (gm*cos(p*d) - p*sin(p*d) / (Km**2-p**2) / (gm**2 + p**2))
+	return 2 * k**2 * (n**2-1) * Am * Bt(w,p) * cos(Km*d) * (gm*cos(p*d) - p*sin(p*d)) / (Km**2-p**2) / (gm**2 + p**2)
 
 def F(p,p2,w,n,d):
 	k = w/c
@@ -263,7 +291,8 @@ def F(p,p2,w,n,d):
 		return 0
 
 	else:
-		return -k**2 * (sqrt(n)-1) * Be(w,n,d,p) * Be(w,n,d,p2) * (sin(s2+p)*d/(s+p) + sin(s2-p)/(s2-p)) / (p2**2 - p**2)
+		return k**2 * (sqrt(n)-1) * Br(w,n,d,p2) * Bt(w,p) / (p2**2 - p**2) * ( (p*cos(s2*d)*sin(p*d) - s2*sin(s2*d)*cos(p*d))/(s2**2 - p**2) ) 
+		# return -k**2 * (sqrt(n)-1) * Br(w,n,d,p2) * Bt(w,p) * (sin((s2+p)*d)/(s2+p) + sin((s2-p)*d)/(s2-p)) / (p2**2 - p**2)
 
 
 def QT(p,w,n,d,B_modes,am,qr,ps):
