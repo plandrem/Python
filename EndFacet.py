@@ -183,7 +183,7 @@ def main():
 	'''
 
 	# transverse wavevectors of continuum modes outside structure
-	ps = np.linspace(0,20*k,50)			# must be linear for integration
+	ps = np.linspace(0,20*k,200)			# must be linear for integration
 	if np.where(ps==k):								# avoid singularity at p = k (triggers B = 0 in denominator of Be)
 		ps[np.where(ps==k)] += 1e-15
 
@@ -206,24 +206,46 @@ def main():
 
 	print '\nComputing q values for plot...'
 
-	ps_f = np.linspace(0,150,100)
+	ps_f = np.linspace(0,150,200)
 	qt_f = np.array([QT(p,w,n,d,B_modes,am_i,qr_i,ps) for p in ps_f])
 	qr_f = np.array([QR(p,w,n,d,qt_i,ps) for p in ps_f])
 	
-
+	
 	fig, ax = plt.subplots(2,figsize=(7,5),sharex=True)
 
-	ax[0].plot(ps_f,qt_f.real,'r')
-	ax[0].plot(ps_f,qt_f.imag,'r:')
-	ax[1].plot(ps_f,qr_f.real,'b')
-	ax[1].plot(ps_f,qr_f.imag,'b:')
+	ax[0].plot(ps,qt_i.real,'r')
+	ax[0].plot(ps,qt_i.imag,'r:')
+	ax[1].plot(ps,qr_i.real,'b')
+	ax[1].plot(ps,qr_i.imag,'b:')
 
 	ax[0].axhline(0,color='k',ls=':')
 	ax[1].axhline(0,color='k',ls=':')
 
-	plt.figure()
-	plt.plot(ps_f,B_continuum(ps_f,k).real,'r')
-	plt.plot(ps_f,B_continuum(ps_f,k).imag,'b')
+	fig2, ax2 = plt.subplots(2,figsize=(7,5),sharex=True)
+
+	ax2[0].plot(ps_f,qt_f.real,'r')
+	ax2[0].plot(ps_f,qt_f.imag,'r:')
+	ax2[1].plot(ps_f,qr_f.real,'b')
+	ax2[1].plot(ps_f,qr_f.imag,'b:')
+
+	ax2[0].axhline(0,color='k',ls=':')
+	ax2[1].axhline(0,color='k',ls=':')
+
+	# plt.figure()
+	# plt.plot(ps_f,B_continuum(ps_f,k).real,'r')
+	# plt.plot(ps_f,B_continuum(ps_f,k).imag,'b')
+
+	# plt.figure()
+	# plt.plot(ps_f,Bt(w,ps_f).real,'r')
+	# plt.plot(ps_f,Bt(w,ps_f).imag,'b')
+
+	# plt.figure()
+	# plt.plot(ps_f,Br(w,n,d,ps_f).real,'r')
+	# plt.plot(ps_f,Br(w,n,d,ps_f).imag,'b')
+	
+	# plt.figure()
+	# plt.plot(ps_f,o(n,ps_f,k).real,'r')
+	# plt.plot(ps_f,o(n,ps_f,k).imag,'b')
 
 	# ax[1].set_xlim(0,150)
 	
@@ -303,7 +325,7 @@ def F(p2,p,w,n,d):
 		return pi * Bt(w,p) * Br(w,n,d,p2) * (Dr(p2,w,n,d) + np.conjugate(Dr(p2,w,n,d)))
 
 	else:
-		return k**2 * (sqrt(n)-1) * Br(w,n,d,p2) * Bt(w,p) / (p2**2 - p**2) * ( (p*cos(s2*d)*sin(p*d) - s2*sin(s2*d)*cos(p*d))/(s2**2 - p**2) ) 
+		return k**2 * (n**2-1) * Br(w,n,d,p2) * Bt(w,p) / (p2**2 - p**2) * ( (p*cos(s2*d)*sin(p*d) - s2*sin(s2*d)*cos(p*d))/(s2**2 - p**2) ) 
 		# return -k**2 * (sqrt(n)-1) * Br(w,n,d,p2) * Bt(w,p) * (sin((s2+p)*d)/(s2+p) + sin((s2-p)*d)/(s2-p)) / (p2**2 - p**2)
 
 
