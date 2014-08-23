@@ -183,16 +183,18 @@ def main():
 	'''
 
 	# transverse wavevectors of continuum modes outside structure
-	ps = np.linspace(0,20*k,200)			# must be linear for integration
+	ps = np.linspace(0,20*k,50)			# must be linear for integration
 	if np.where(ps==k):								# avoid singularity at p = k (triggers B = 0 in denominator of Be)
 		ps[np.where(ps==k)] += 1e-15
+
+	ps = ps.reshape(50)
 
 
 	# Initialize coefficients to zero
 	am_i = np.zeros(N)
 	qr_i = np.zeros(len(ps))
 
-	imax = 1
+	imax = 2
 	for i in range(imax):
 
 		print '\nComputing iteration %u of %u' % (i+1,imax)
@@ -204,11 +206,24 @@ def main():
 
 		qr_i = np.array([QR(p,w,n,d,qt_i,ps) for p in ps])
 
+		print np.shape(ps)
+		print np.shape(qt_i)
+		print np.shape(qr_i)
+
 	print '\nComputing q values for plot...'
 
-	ps_f = np.linspace(0,150,200)
+	ps_f = np.linspace(0,150,100)
 	qt_f = np.array([QT(p,w,n,d,B_modes,am_i,qr_i,ps) for p in ps_f])
 	qr_f = np.array([QR(p,w,n,d,qt_i,ps) for p in ps_f])
+
+	# print '\nTesting Power Conservation:'
+	# dp = ps[1]-ps[0]
+	# Bc = lambda x: B_continuum(x,k)
+
+	# sigma = np.sum(abs(B_modes[1:])**2)
+	# integral = np.sum(abs(qt_i)**2 + abs(qr_i)**2 * np.conjugate(Bc(p))/abs(Bc(p))) * dp
+
+	# print 'error:', (1+am_i[0]) * (1-np.conjugate(am_i[0])) - integral - sigma
 	
 	
 	fig, ax = plt.subplots(2,figsize=(7,5),sharex=True)
@@ -322,11 +337,13 @@ def F(p2,p,w,n,d):
 	s2 = o(n,p2,k)
 
 	if p == p2:
-		return pi * Bt(w,p) * Br(w,n,d,p2) * (Dr(p2,w,n,d) + np.conjugate(Dr(p2,w,n,d)))
+		# return pi * Bt(w,p) * Br(w,n,d,p2) * (Dr(p2,w,n,d) + np.conjugate(Dr(p2,w,n,d)))
+		return 0
 
 	else:
 		return k**2 * (n**2-1) * Br(w,n,d,p2) * Bt(w,p) / (p2**2 - p**2) * ( (p*cos(s2*d)*sin(p*d) - s2*sin(s2*d)*cos(p*d))/(s2**2 - p**2) ) 
-		# return -k**2 * (sqrt(n)-1) * Br(w,n,d,p2) * Bt(w,p) * (sin((s2+p)*d)/(s2+p) + sin((s2-p)*d)/(s2-p)) / (p2**2 - p**2)
+		# return -k**2 * (n**2-1) * Br(w,n,d,p2) * Bt(w,p) * (sin((s2+p)*d)/(s2+p) + sin(s2-p)/(s2-p)) / (p2**2 - p**2)
+		# return -k**2 * (n**2-1) * Br(w,n,d,p2) * Bt(w,p) * (sin((s2+p)*d)/(s2+p) + sin((s2-p)*d)/(s2-p)) / (p2**2 - p**2)
 
 
 def QT(p,w,n,d,B_modes,am,qr,ps):
@@ -342,9 +359,9 @@ def QT(p,w,n,d,B_modes,am,qr,ps):
 
 	integrand = qr * (Bo - Bc(ps)) * Fpp2
 	dp = ps[1]-ps[0]
-	integral = sum(integrand * dp)
+	integral = np.sum(integrand * dp)
 
-	sigma = sum(np.array([(Bo-B_modes[m])*am[m]*Gm(m,p) for m in range(len(B_modes))]))
+	sigma = np.sum(np.array([(Bo-B_modes[m])*am[m]*Gm(m,p) for m in range(len(B_modes))]))
 
 	return 1/(2*w*mu*P) * abs(Bc(p)) / (Bo + Bc(p)) * (2*Bo*Gm(0,p) + integral + sigma)
 
@@ -360,7 +377,7 @@ def AM(m,w,n,d,B_modes,qt,ps):
 
 	integrand = qt * (Bm - Bc(ps)) * Gm(ps)
 	dp = ps[1]-ps[0]
-	integral = sum(integrand * dp)
+	integral = np.sum(integrand * dp)
 
 
 	return 1/(4*w*mu*P) * integral
@@ -378,8 +395,7 @@ def QR(p,w,n,d,qt,ps):
 
 	integrand = qt * (Bc(p) - Bc(ps)) * Fpp2
 	dp = ps[1]-ps[0]
-	integral = sum(integrand * dp)
-
+	integral = np.sum(integrand * dp)
 
 	return 1/(4*w*mu*P) * abs(Bc(p))/Bc(p) * integral
 
