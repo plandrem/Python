@@ -21,6 +21,11 @@ sqrt = sp.emath.sqrt
 mu = 4*pi * 1e7
 c  = 299792458
 
+# units
+cm = 1e-2
+um = 1e-6
+nm = 1e-9
+
 colors = ['r','g','b','#FFE21A','c','m']
 
 plt.rcParams['image.origin'] = 'lower'
@@ -100,7 +105,6 @@ def test_beta_marcuse():
 		bTM = beta_marcuse(n,d,pol='TM',wl=wl)[0]
 		print "%.5f, %.5f, %.5f" % (bTM * d, target_vals_TM[i], abs((bTM * d - target_vals_TM[i]) / target_vals_TM[i]))
 
-
 def test_beta():
 
 	'''
@@ -149,6 +153,128 @@ def test_beta():
 		print "%.5f, %.5f, %.5f" % (b*a, target_vals[i], abs((b*a - target_vals[i]) / target_vals[i]))
 
 
+def pythonic_main():
+	'''
+	rewrite of the algorithm with 3 goals: 1) improve performance by using numpy methods instead
+	of nested for-loops; 2) catch/eliminate typos from the first attempt; and 3) build a more
+	elegant API so I'm not recalculating k in every function call.
+	'''
+
+	# Define Key Simulation Parameters
+
+	n = sqrt(20)
+	d = 1 * cm
+	kd = 0.628
+
+	p_max = 20 			# max transverse wavevector to use for indefinite integrals; multiples of k
+	p_res = 1e3     # number of steps to use in integration
+
+	imax = 1  				# max number of iterations to run
+
+	'''
+	Calculate wavevectors and other physical quantities needed for all functions
+	'''
+
+	# constants
+	k = kd/d
+	wl = 2*pi/k
+	w = c*k
+	eps = n**2
+
+	# wavevectors
+	N = numModes(n,1,2*d/wl)
+	Bm = beta_marcuse(n,d,wl=wl,Nmodes=N)			# Propagation constants of waveguide modes
+	Bo = Bm[0]
+
+	p = np.linspace(0,p_max*k,p_res)					# transverse wavevectors in air (independent variable for algorithm)
+	dp = p[1]-p[0]
+	
+	Bc = sqrt(       k**2 - p**2) 						# propagation constants in air for continuum modes
+	o  = sqrt(n**2 * k**2 - Bc**2)						# transverse wavevectors in high-index region for continuum modes
+	
+	gm  = sqrt(      -k**2 + Bm**2)						# transverse wavevectors in air for guided modes
+	Km  = sqrt(n**2 * k**2 - Bm**2)						# transverse wavevectors in high-index region for guided modes
+
+	# Mode Amplitude Coefficients
+	P = 1
+
+	Am = sqrt(2*w*mu*P / (Bm*d + Bm/gm))
+
+	Bt = sqrt(2*w*mu*P / (pi*Bc)) # might need to make these |Bc| instead of Bc
+	Br = sqrt(2*p**2*w*mu*P / (pi*Bc*(p**2*cos(o*d)**2 + o**2*sin(o*d)**2)))
+	
+	Dr = 1/2. * exp(-1j*p*d) * (cos(o*d) + 1j*o/p * sin(o*d))
+
+	# Overlap Integral Solutions, Gm(p) and F(p',p) = F(p1,p2)
+
+	G = np.zeros((N,p_res),dtype = 'complex')
+
+	for i in range(N):
+		G[i,:] = 2*k**2 * (eps-1) * Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d) - p*sin(p*d)) / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
+
+	p1,p2 = np.meshgrid(p,p)			# Move to 2D arrays
+	Br1 = np.tile(Br,(p_res,1))
+	Bt1 = np.tile(Bt,(p_res,1))
+	o1  = np.tile(o ,(p_res,1))
+	Bc1 = np.tile(Bc,(p_res,1)); Bc2 = Bc1.transpose()
+	
+	D1  = np.tile(Dr,(p_res,1))
+	Dstar  = np.conjugate(D1)
+
+	od = o1*d; pd = p2*d
+
+	F = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
+									 (D1*exp(-1j*p1*d)*(p2*sin(pd)-1j*p1*cos(pd)) + Dstar*exp(1j*p1*d)*(p2*sin(pd)+1j*p1*cos(pd))/(p1**2-p2**2)))
+
+	# Handle Cauchy singularities
+	F[np.where(np.isnan(F))] = 0
+
+	'''
+	Run Neuman series and test for convergence of the fields
+	'''
+
+	# Initialize coefficients to zero
+	am = np.zeros(N)
+	qr = np.zeros(p_res)	
+
+	for i in range(imax):
+
+		# Qt
+		qr1 = np.tile(qr,(p_res,1))
+		integral = np.sum(qr1 * (Bo-Bc1) * F, axis=0) * dp
+
+		sigma = np.sum([(Bo-Bm[n]) * am[n] * G[n,:] for n in range(N)], axis=0)
+
+		qt = 1/(2*w*mu*P) * Bc / (Bo+Bc) * (2*Bo*G[0,:] + integral + sigma)
+
+		# an
+		am = np.array(
+			[1/(4*w*mu*P) * np.sum(qt * (Bm[n]-Bc) * G[n,:]) * dp for n in range(N)]
+			)
+		print am
+
+		#Qr
+		qt1 = np.tile(qt,(p_res,1))
+		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * np.sum(qt1 * (Bc2-Bc1) * F.transpose()) * dp
+
+
+	'''
+	Plot results
+	'''
+	
+	fig, ax = plt.subplots(2,figsize=(7,5),sharex=True)
+
+	ax[0].plot(p,qt.real,'r')
+	ax[0].plot(p,qt.imag,'r:')
+	ax[1].plot(p,qr.real,'b')
+	ax[1].plot(p,qr.imag,'b:')
+
+	ax[0].axhline(0,color='k',ls=':')
+	ax[1].axhline(0,color='k',ls=':')
+
+	plt.show()
+
+
 
 def main():
 
@@ -170,8 +296,9 @@ def main():
 
 	# get all waveguide modes supported by structure
 	N = numModes(n,1,2*d/wl)
-	B_modes = beta_marcuse(n,d,wl=wl,pol='TE',Nmodes=N) # propagation constant
+	B_modes = beta_marcuse(n,d,wl=wl,pol='TE',Nmodes=N, plot=True) # propagation constant
 	Bo = B_modes[0]
+	exit()
 
 	'''
 	# Debugger for mode solver
@@ -418,4 +545,5 @@ if __name__ == '__main__':
   # test_beta()
   # test_beta_marcuse()
   # test_qt()
-  main()
+  pythonic_main()
+  # main()
