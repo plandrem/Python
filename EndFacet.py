@@ -12,11 +12,13 @@ import sys
 import os
 import time
 
-import pudb; pu.db
+# import pudb; pu.db
 
 from DielectricSlab import Beta, numModes
 
 from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
+
+np.set_printoptions(linewidth=150)
 
 pi = sp.pi
 sqrt = sp.emath.sqrt
@@ -169,9 +171,9 @@ def pythonic_main():
 	kd = 0.628
 
 	p_max = 10 			# max transverse wavevector to use for indefinite integrals; multiples of k
-	p_res = 3	      # number of steps to use in integration
+	p_res = 2.5e3	      # number of steps to use in integration
 
-	imax = 1 				# max number of iterations to run
+	imax = 4 				# max number of iterations to run
 
 	'''
 	Calculate wavevectors and other physical quantities needed for all functions
@@ -188,7 +190,7 @@ def pythonic_main():
 	Bm = beta_marcuse(n,d,wl=wl,Nmodes=N)			# Propagation constants of waveguide modes
 	Bo = Bm[0]
 
-	p = np.linspace(0,p_max*k,p_res)					# transverse wavevectors in air (independent variable for algorithm)
+	p = np.linspace(1e-15,p_max*k,p_res)					# transverse wavevectors in air (independent variable for algorithm)
 	dp = p[1]-p[0]
 	
 	Bc = sqrt(       k**2 - p**2) 						# propagation constants in air for continuum modes
@@ -225,13 +227,15 @@ def pythonic_main():
 
 	od = o1*d; pd = p2*d
 
-	# F = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
-	# 								 (D1*exp(-1j*p1*d)*(p2*sin(pd)-1j*p1*cos(pd)) + Dstar*exp(1j*p1*d)*(p2*sin(pd)+1j*p1*cos(pd))/(p1**2-p2**2)))
+	F = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
+									 (D1*exp(-1j*p1*d)*(p2*sin(pd)-1j*p1*cos(pd)) + Dstar*exp(1j*p1*d)*(p2*sin(pd)+1j*p1*cos(pd))/(p1**2-p2**2)))
 
-	F = 2*Br1*Bt1*k**2*(eps-1) / (p1**2-p2**2) * (p2*cos(pd)*sin(pd) - o1*sin(od)*cos(pd)) / (o1**2 - p2**2)
+	# F = 2*Br1*Bt1*k**2*(eps-1) / (p1**2-p2**2) * (p2*cos(pd)*sin(pd) - o1*sin(od)*cos(pd)) / (o1**2 - p2**2)
 
 	# Handle Cauchy singularities
-	F[np.where(np.isnan(F))] = 0
+	cauchy = pi * Bt1.transpose() * Br1 * (D1 + Dstar)
+	idx = np.where(np.isnan(F))
+	F[idx] = cauchy[idx]
 
 	'''
 	Run Neuman series and test for convergence of the fields
@@ -247,7 +251,7 @@ def pythonic_main():
 
 		# Qt
 		qr1 = np.tile(qr,(p_res,1))
-		integral = np.sum(qr1 * (Bo-Bc1) * F, axis=0) * dp
+		integral = np.sum(qr1 * (Bo-Bc1) * F, axis=1) * dp
 
 		sigma = np.sum([(Bo-Bm[n]) * am[n] * G[n,:] for n in range(N)], axis=0)
 
@@ -261,7 +265,7 @@ def pythonic_main():
 
 		#Qr
 		qt1 = np.tile(qt,(p_res,1))
-		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * np.sum(qt1 * (Bc2-Bc1) * F.transpose(), axis=0) * dp
+		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * np.sum(qt1 * (Bc2-Bc1) * F.transpose(), axis=1) * dp
 
 
 	'''
@@ -270,10 +274,10 @@ def pythonic_main():
 
 	fig, ax = plt.subplots(2,figsize=(7,5),sharex=True)
 
-	ax[0].plot(p,qt.real,'r')
-	ax[0].plot(p,qt.imag,'r:')
-	ax[1].plot(p,qr.real,'b')
-	ax[1].plot(p,qr.imag,'b:')
+	ax[0].plot(p/k,qt.real,'r')
+	ax[0].plot(p/k,qt.imag,'r:')
+	ax[1].plot(p/k,qr.real,'b')
+	ax[1].plot(p/k,qr.imag,'b:')
 
 	ax[0].axhline(0,color='k',ls=':')
 	ax[1].axhline(0,color='k',ls=':')
