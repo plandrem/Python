@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 import putil
 import sys
 import os
+import time
 
 from DielectricSlab import Beta, numModes
 
@@ -183,12 +184,9 @@ def main():
 	'''
 
 	# transverse wavevectors of continuum modes outside structure
-	ps = np.linspace(0,20*k,50)			# must be linear for integration
+	ps = np.linspace(0,20*k,200)			# must be linear for integration
 	if np.where(ps==k):								# avoid singularity at p = k (triggers B = 0 in denominator of Be)
 		ps[np.where(ps==k)] += 1e-15
-
-	ps = ps.reshape(50)
-
 
 	# Initialize coefficients to zero
 	am_i = np.zeros(N)
@@ -200,15 +198,11 @@ def main():
 		print '\nComputing iteration %u of %u' % (i+1,imax)
 
 		qt_i = np.array([QT(p,w,n,d,B_modes,am_i,qr_i,ps) for p in ps])
-		
+
 		am_i = np.array([AM(m,w,n,d,B_modes,qt_i,ps) for m in range(N)])
 		print am_i
 
 		qr_i = np.array([QR(p,w,n,d,qt_i,ps) for p in ps])
-
-		print np.shape(ps)
-		print np.shape(qt_i)
-		print np.shape(qr_i)
 
 	print '\nComputing q values for plot...'
 
@@ -216,14 +210,14 @@ def main():
 	qt_f = np.array([QT(p,w,n,d,B_modes,am_i,qr_i,ps) for p in ps_f])
 	qr_f = np.array([QR(p,w,n,d,qt_i,ps) for p in ps_f])
 
-	# print '\nTesting Power Conservation:'
-	# dp = ps[1]-ps[0]
-	# Bc = lambda x: B_continuum(x,k)
+	print '\nTesting Power Conservation:'
+	dp = ps[1]-ps[0]
+	Bc = lambda x: B_continuum(x,k)
 
-	# sigma = np.sum(abs(B_modes[1:])**2)
-	# integral = np.sum(abs(qt_i)**2 + abs(qr_i)**2 * np.conjugate(Bc(p))/abs(Bc(p))) * dp
-
-	# print 'error:', (1+am_i[0]) * (1-np.conjugate(am_i[0])) - integral - sigma
+	sigma = np.sum(abs(B_modes[1:])**2)
+	integral = np.sum(abs(qt_i)**2 + abs(qr_i)**2 * np.conjugate(Bc(p))/abs(Bc(p))) * dp
+	error = np.real((1+am_i[0]) * (1-np.conjugate(am_i[0])) - integral - sigma)
+	print 'error:', error
 	
 	
 	fig, ax = plt.subplots(2,figsize=(7,5),sharex=True)
