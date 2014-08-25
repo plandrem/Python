@@ -12,6 +12,8 @@ import sys
 import os
 import time
 
+import pudb; pu.db
+
 from DielectricSlab import Beta, numModes
 
 from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
@@ -166,10 +168,10 @@ def pythonic_main():
 	d = 1 * cm
 	kd = 0.628
 
-	p_max = 20 			# max transverse wavevector to use for indefinite integrals; multiples of k
-	p_res = 1e3     # number of steps to use in integration
+	p_max = 10 			# max transverse wavevector to use for indefinite integrals; multiples of k
+	p_res = 3	      # number of steps to use in integration
 
-	imax = 1  				# max number of iterations to run
+	imax = 1 				# max number of iterations to run
 
 	'''
 	Calculate wavevectors and other physical quantities needed for all functions
@@ -223,8 +225,10 @@ def pythonic_main():
 
 	od = o1*d; pd = p2*d
 
-	F = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
-									 (D1*exp(-1j*p1*d)*(p2*sin(pd)-1j*p1*cos(pd)) + Dstar*exp(1j*p1*d)*(p2*sin(pd)+1j*p1*cos(pd))/(p1**2-p2**2)))
+	# F = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
+	# 								 (D1*exp(-1j*p1*d)*(p2*sin(pd)-1j*p1*cos(pd)) + Dstar*exp(1j*p1*d)*(p2*sin(pd)+1j*p1*cos(pd))/(p1**2-p2**2)))
+
+	F = 2*Br1*Bt1*k**2*(eps-1) / (p1**2-p2**2) * (p2*cos(pd)*sin(pd) - o1*sin(od)*cos(pd)) / (o1**2 - p2**2)
 
 	# Handle Cauchy singularities
 	F[np.where(np.isnan(F))] = 0
@@ -238,6 +242,8 @@ def pythonic_main():
 	qr = np.zeros(p_res)	
 
 	for i in range(imax):
+
+		print '\nComputing iteration %u of %u' % (i+1,imax)
 
 		# Qt
 		qr1 = np.tile(qr,(p_res,1))
@@ -255,13 +261,13 @@ def pythonic_main():
 
 		#Qr
 		qt1 = np.tile(qt,(p_res,1))
-		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * np.sum(qt1 * (Bc2-Bc1) * F.transpose()) * dp
+		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * np.sum(qt1 * (Bc2-Bc1) * F.transpose(), axis=0) * dp
 
 
 	'''
 	Plot results
 	'''
-	
+
 	fig, ax = plt.subplots(2,figsize=(7,5),sharex=True)
 
 	ax[0].plot(p,qt.real,'r')
