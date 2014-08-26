@@ -18,7 +18,7 @@ from DielectricSlab import Beta, numModes
 
 from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
 
-np.set_printoptions(linewidth=150)
+np.set_printoptions(linewidth=150, precision=2)
 
 pi = sp.pi
 sqrt = sp.emath.sqrt
@@ -171,7 +171,7 @@ def pythonic_main():
 	kd = 0.628
 
 	p_max = 20 			# max transverse wavevector to use for indefinite integrals; multiples of k
-	p_res = 2e3	      # number of steps to use in integration
+	p_res = 100	      # number of steps to use in integration
 
 	imax = 4 				# max number of iterations to run
 
@@ -219,7 +219,7 @@ def pythonic_main():
 
 	p1,p2 = np.meshgrid(p,p)			# Move to 2D arrays
 	Br1 = np.tile(Br,(p_res,1))
-	Bt1 = np.tile(Bt,(p_res,1))
+	Bt1 = np.tile(Bt,(p_res,1)); Bt2 = Bt1.transpose()
 	o1  = np.tile(o ,(p_res,1))
 	Bc1 = np.tile(Bc,(p_res,1)); Bc2 = Bc1.transpose()
 	
@@ -228,12 +228,13 @@ def pythonic_main():
 
 	od = o1*d; pd = p2*d
 
-	F  = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
-									 2*(D1 * exp(-1j*p1*d) * (p2*sin(pd)-1j*p1*cos(pd)) ).real / (p1**2-p2**2) )
+	# F  = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
+	# 								 2*(D1 * exp(-1j*p1*d) * (p2*sin(pd)-1j*p1*cos(pd)) ).real / (p1**2-p2**2) )
 
 	# F = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
 	# 								   (D1*exp(-1j*p1*d)*(p2*sin(pd)-1j*p1*cos(pd)) + Dstar*exp(1j*p1*d)*(p2*sin(pd)+1j*p1*cos(pd)))/(p1**2-p2**2))
 
+	F = k**2 * (n**2-1) * Br1 * Bt2 / (p1**2 - p2**2) * ( (p2*cos(o1*d)*sin(p2*d) - o1*sin(o1*d)*cos(p2*d))/(o1**2 - p2**2) ) 
 	# F = 2*Br1*Bt1*k**2*(eps-1) / (p1**2-p2**2) * (p2*cos(pd)*sin(pd) - o1*sin(od)*cos(pd)) / (o1**2 - p2**2)
 
 	# Handle Cauchy singularities
@@ -241,6 +242,10 @@ def pythonic_main():
 	idx = np.where(1 - np.isfinite(F))
 	F[idx] = 0
 	# F[idx] = cauchy[idx]
+
+	# print F[0,:]
+	# print Bt
+	# exit()
 
 	'''
 	Run Neuman series and test for convergence of the fields
@@ -348,7 +353,7 @@ def main():
 	'''
 
 	# transverse wavevectors of continuum modes outside structure
-	ps = np.linspace(1e-15,20*k,200)			# must be linear for integration
+	ps = np.linspace(1e-15,20*k,100)			# must be linear for integration
 	if np.where(ps==k):								# avoid singularity at p = k (triggers B = 0 in denominator of Be)
 		ps[np.where(ps==k)] += 1e-15
 
@@ -356,7 +361,7 @@ def main():
 	am_i = np.zeros(N)
 	qr_i = np.zeros(len(ps))
 
-	imax = 2
+	imax = 4
 	for i in range(imax):
 
 		print '\nComputing iteration %u of %u' % (i+1,imax)
@@ -459,7 +464,7 @@ def Br(w,n,d,p):
 	k = w/c
 	s = o(n,p,k)
 	B = B_continuum(p,k)
-
+    
 	return sqrt(2*p**2*w*mu*P / (pi*abs(B)*(p**2*cos(s*d)**2 + s**2*sin(s*d)**2)))
 
 def Bt(w,p):
@@ -499,6 +504,7 @@ def F(p2,p,w,n,d):
 		return 0
 
 	else:
+		# return Bt(w,p)
 		return k**2 * (n**2-1) * Br(w,n,d,p2) * Bt(w,p) / (p2**2 - p**2) * ( (p*cos(s2*d)*sin(p*d) - s2*sin(s2*d)*cos(p*d))/(s2**2 - p**2) ) 
 		# return -k**2 * (n**2-1) * Br(w,n,d,p2) * Bt(w,p) * (sin((s2+p)*d)/(s2+p) + sin(s2-p)/(s2-p)) / (p2**2 - p**2)
 		# return -k**2 * (n**2-1) * Br(w,n,d,p2) * Bt(w,p) * (sin((s2+p)*d)/(s2+p) + sin((s2-p)*d)/(s2-p)) / (p2**2 - p**2)
@@ -514,6 +520,10 @@ def QT(p,w,n,d,B_modes,am,qr,ps):
 	Gm = lambda m,p: G(m,p,w,n,d,B_modes[m])
 
 	Fpp2 = [F(p2,p,w,n,d) for p2 in ps]
+
+	# print p
+	print np.array(Fpp2)
+	exit()
 
 	integrand = qr * (Bo - Bc(ps)) * Fpp2
 	dp = ps[1]-ps[0]
