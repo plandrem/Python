@@ -170,8 +170,8 @@ def pythonic_main():
 	d = 1 * cm
 	kd = 0.628
 
-	p_max = 10 			# max transverse wavevector to use for indefinite integrals; multiples of k
-	p_res = 2.5e3	      # number of steps to use in integration
+	p_max = 20 			# max transverse wavevector to use for indefinite integrals; multiples of k
+	p_res = 2e3	      # number of steps to use in integration
 
 	imax = 4 				# max number of iterations to run
 
@@ -204,8 +204,8 @@ def pythonic_main():
 
 	Am = sqrt(2*w*mu*P / (Bm*d + Bm/gm))
 
-	Bt = sqrt(2*w*mu*P / (pi*Bc)) # might need to make these |Bc| instead of Bc
-	Br = sqrt(2*p**2*w*mu*P / (pi*Bc*(p**2*cos(o*d)**2 + o**2*sin(o*d)**2)))
+	Bt = sqrt(2*w*mu*P / (pi*abs(Bc))) # might need to make these |Bc| instead of Bc
+	Br = sqrt(2*p**2*w*mu*P / (pi*abs(Bc)*(p**2*cos(o*d)**2 + o**2*sin(o*d)**2)))
 	
 	Dr = 1/2. * exp(-1j*p*d) * (cos(o*d) + 1j*o/p * sin(o*d))
 
@@ -227,15 +227,19 @@ def pythonic_main():
 
 	od = o1*d; pd = p2*d
 
-	F = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
-									 (D1*exp(-1j*p1*d)*(p2*sin(pd)-1j*p1*cos(pd)) + Dstar*exp(1j*p1*d)*(p2*sin(pd)+1j*p1*cos(pd))/(p1**2-p2**2)))
+	F  = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
+									 2*(D1 * exp(-1j*p1*d) * (p2*sin(pd)-1j*p1*cos(pd)) ).real / (p1**2-p2**2) )
+
+	# F = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
+	# 								   (D1*exp(-1j*p1*d)*(p2*sin(pd)-1j*p1*cos(pd)) + Dstar*exp(1j*p1*d)*(p2*sin(pd)+1j*p1*cos(pd)))/(p1**2-p2**2))
 
 	# F = 2*Br1*Bt1*k**2*(eps-1) / (p1**2-p2**2) * (p2*cos(pd)*sin(pd) - o1*sin(od)*cos(pd)) / (o1**2 - p2**2)
 
 	# Handle Cauchy singularities
 	cauchy = pi * Bt1.transpose() * Br1 * (D1 + Dstar)
-	idx = np.where(np.isnan(F))
-	F[idx] = cauchy[idx]
+	idx = np.where(1 - np.isfinite(F))
+	F[idx] = 0
+	# F[idx] = cauchy[idx]
 
 	'''
 	Run Neuman series and test for convergence of the fields
@@ -251,11 +255,12 @@ def pythonic_main():
 
 		# Qt
 		qr1 = np.tile(qr,(p_res,1))
-		integral = np.sum(qr1 * (Bo-Bc1) * F, axis=1) * dp
+		integral = np.trapz(qr1 * (Bo-Bc1) * F, dx=dp, axis=1)
+		# integral = np.sum(qr1 * (Bo-Bc1) * F, axis=1) * dp
 
 		sigma = np.sum([(Bo-Bm[n]) * am[n] * G[n,:] for n in range(N)], axis=0)
 
-		qt = 1/(2*w*mu*P) * Bc / (Bo+Bc) * (2*Bo*G[0,:] + integral + sigma)
+		qt = 1/(2*w*mu*P) * abs(Bc) / (Bo+Bc) * (2*Bo*G[0,:] + integral + sigma)
 
 		# an
 		am = np.array(
@@ -265,7 +270,10 @@ def pythonic_main():
 
 		#Qr
 		qt1 = np.tile(qt,(p_res,1))
-		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * np.sum(qt1 * (Bc2-Bc1) * F.transpose(), axis=1) * dp
+		integral = np.trapz(qt1 * (Bc2-Bc1) * F.transpose(), dx=dp, axis=1)
+		# integral = np.sum(qt1 * (Bc2-Bc1) * F.transpose(), axis=1) * dp
+		
+		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * integral
 
 
 	'''
@@ -281,6 +289,22 @@ def pythonic_main():
 
 	ax[0].axhline(0,color='k',ls=':')
 	ax[1].axhline(0,color='k',ls=':')
+
+	plt.figure()
+	ext = putil.getExtent(p/k,p/k)
+	plt.imshow(np.real(F), vmin=-1e14, vmax=1e14, extent = ext)
+	plt.colorbar()
+
+	plt.figure()
+	ext = putil.getExtent(p/k,p/k)
+	plt.imshow(abs(Bc2-Bc1), extent = ext)
+	plt.colorbar()
+
+	plt.figure()
+	ext = putil.getExtent(p/k,p/k)
+	plt.imshow(abs(qt1), extent = ext)
+	plt.colorbar()
+
 
 	plt.show()
 
