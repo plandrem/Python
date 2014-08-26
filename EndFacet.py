@@ -187,7 +187,7 @@ def pythonic_main():
 
 	# wavevectors
 	N = numModes(n,1,2*d/wl)
-	Bm = beta_marcuse(n,d,wl=wl,Nmodes=N)			# Propagation constants of waveguide modes
+	Bm = beta_marcuse(n,d,wl=wl,Nmodes=N, pol='TE')			# Propagation constants of waveguide modes
 	Bo = Bm[0]
 
 	p = np.linspace(1e-15,p_max*k,p_res)					# transverse wavevectors in air (independent variable for algorithm)
@@ -214,7 +214,8 @@ def pythonic_main():
 	G = np.zeros((N,p_res),dtype = 'complex')
 
 	for i in range(N):
-		G[i,:] = 2*k**2 * (eps-1) * Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d) - p*sin(p*d)) / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
+		G[i,:] = 2 * k**2 * (eps-1) * Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d) - p*sin(p*d)) / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
+
 
 	p1,p2 = np.meshgrid(p,p)			# Move to 2D arrays
 	Br1 = np.tile(Br,(p_res,1))
@@ -290,20 +291,20 @@ def pythonic_main():
 	ax[0].axhline(0,color='k',ls=':')
 	ax[1].axhline(0,color='k',ls=':')
 
-	plt.figure()
-	ext = putil.getExtent(p/k,p/k)
-	plt.imshow(np.real(F), vmin=-1e14, vmax=1e14, extent = ext)
-	plt.colorbar()
+	# plt.figure()
+	# ext = putil.getExtent(p/k,p/k)
+	# plt.imshow(np.real(F), vmin=-1e14, vmax=1e14, extent = ext)
+	# plt.colorbar()
 
-	plt.figure()
-	ext = putil.getExtent(p/k,p/k)
-	plt.imshow(abs(Bc2-Bc1), extent = ext)
-	plt.colorbar()
+	# plt.figure()
+	# ext = putil.getExtent(p/k,p/k)
+	# plt.imshow(abs(Bc2-Bc1), extent = ext)
+	# plt.colorbar()
 
-	plt.figure()
-	ext = putil.getExtent(p/k,p/k)
-	plt.imshow(abs(qt1), extent = ext)
-	plt.colorbar()
+	# plt.figure()
+	# ext = putil.getExtent(p/k,p/k)
+	# plt.imshow(abs(qt1), extent = ext)
+	# plt.colorbar()
 
 
 	plt.show()
@@ -319,7 +320,7 @@ def main():
 	
 	# Define Waveguide Constants
 	n  = sqrt(20)
-	d = 1e-2
+	d = 1 * cm
 	kd = 0.628
 	k = kd/d
 
@@ -330,9 +331,11 @@ def main():
 
 	# get all waveguide modes supported by structure
 	N = numModes(n,1,2*d/wl)
-	B_modes = beta_marcuse(n,d,wl=wl,pol='TE',Nmodes=N, plot=True) # propagation constant
+	B_modes = beta_marcuse(n,d,wl=wl,pol='TE',Nmodes=N) # propagation constant
 	Bo = B_modes[0]
-	exit()
+
+	print n, d, wl, N
+	print B_modes
 
 	'''
 	# Debugger for mode solver
@@ -345,7 +348,7 @@ def main():
 	'''
 
 	# transverse wavevectors of continuum modes outside structure
-	ps = np.linspace(0,20*k,200)			# must be linear for integration
+	ps = np.linspace(1e-15,20*k,200)			# must be linear for integration
 	if np.where(ps==k):								# avoid singularity at p = k (triggers B = 0 in denominator of Be)
 		ps[np.where(ps==k)] += 1e-15
 
