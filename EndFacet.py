@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+# !/usr/bin/env python
 
 from __future__ import division
 
@@ -18,7 +18,7 @@ from DielectricSlab import Beta, numModes
 
 from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
 
-np.set_printoptions(linewidth=150, precision=2)
+np.set_printoptions(linewidth=150, precision=8)
 
 pi = sp.pi
 sqrt = sp.emath.sqrt
@@ -261,8 +261,8 @@ def pythonic_main():
 
 		# Qt
 		qr1 = np.tile(qr,(p_res,1))
-		integral = np.trapz(qr1 * (Bo-Bc1) * F, dx=dp, axis=1)
-		# integral = np.sum(qr1 * (Bo-Bc1) * F, axis=1) * dp
+		# integral = np.trapz(qr1 * (Bo-Bc1) * F, dx=dp, axis=1)
+		integral = np.sum(qr1 * (Bo-Bc1) * F, axis=1) * dp
 
 		sigma = np.sum([(Bo-Bm[n]) * am[n] * G[n,:] for n in range(N)], axis=0)
 
@@ -276,11 +276,10 @@ def pythonic_main():
 
 		#Qr
 		qt1 = np.tile(qt,(p_res,1))
-		integral = np.trapz(qt1 * (Bc2-Bc1) * F.transpose(), dx=dp, axis=1)
-		# integral = np.sum(qt1 * (Bc2-Bc1) * F.transpose(), axis=1) * dp
+		# integral = np.trapz(qt1 * (Bc2-Bc1) * F.transpose(), dx=dp, axis=1)
+		integral = np.sum(qt1 * (Bc2-Bc1) * F.transpose(), axis=1) * dp
 		
 		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * integral
-
 
 	'''
 	Plot results
@@ -522,8 +521,8 @@ def QT(p,w,n,d,B_modes,am,qr,ps):
 	Fpp2 = [F(p2,p,w,n,d) for p2 in ps]
 
 	# print p
-	print np.array(Fpp2)
-	exit()
+	# print np.array(Fpp2)
+	# exit()
 
 	integrand = qr * (Bo - Bc(ps)) * Fpp2
 	dp = ps[1]-ps[0]
