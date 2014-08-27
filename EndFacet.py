@@ -22,7 +22,7 @@ np.set_printoptions(linewidth=150, precision=8)
 
 pi = sp.pi
 sqrt = sp.emath.sqrt
-mu = 4*pi * 1e7
+mu = 4*pi * 1e-7
 c  = 299792458
 
 # units
@@ -171,7 +171,7 @@ def pythonic_main():
 	kd = 0.628
 
 	p_max = 20 			# max transverse wavevector to use for indefinite integrals; multiples of k
-	p_res = 100	      # number of steps to use in integration
+	p_res = 3e3	      # number of steps to use in integration
 
 	imax = 4 				# max number of iterations to run
 
@@ -216,7 +216,6 @@ def pythonic_main():
 	for i in range(N):
 		G[i,:] = 2 * k**2 * (eps-1) * Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d) - p*sin(p*d)) / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
 
-
 	p1,p2 = np.meshgrid(p,p)			# Move to 2D arrays
 	Br1 = np.tile(Br,(p_res,1))
 	Bt1 = np.tile(Bt,(p_res,1)); Bt2 = Bt1.transpose()
@@ -228,13 +227,14 @@ def pythonic_main():
 
 	od = o1*d; pd = p2*d
 
-	# F  = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
-	# 								 2*(D1 * exp(-1j*p1*d) * (p2*sin(pd)-1j*p1*cos(pd)) ).real / (p1**2-p2**2) )
+	# This method for F is based on a more direct solution of the field overlap integral, with less
+	# subsequent algebra:
+	F  = 2*Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
+									 2*(D1 * (exp(1j*p1*d) * (p2*sin(pd)+1j*p1*cos(pd))) - 1j*p1 ).real / (p1**2-p2**2) )
 
-	# F = 2*Br1*Bt1 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
-	# 								   (D1*exp(-1j*p1*d)*(p2*sin(pd)-1j*p1*cos(pd)) + Dstar*exp(1j*p1*d)*(p2*sin(pd)+1j*p1*cos(pd)))/(p1**2-p2**2))
+	# This method for F matches the original slow algorithm:
+	# F = k**2 * (n**2-1) * Br1 * Bt2 / (p1**2 - p2**2) * ( (p2*cos(o1*d)*sin(p2*d) - o1*sin(o1*d)*cos(p2*d))/(o1**2 - p2**2) ) 
 
-	F = k**2 * (n**2-1) * Br1 * Bt2 / (p1**2 - p2**2) * ( (p2*cos(o1*d)*sin(p2*d) - o1*sin(o1*d)*cos(p2*d))/(o1**2 - p2**2) ) 
 	# F = 2*Br1*Bt1*k**2*(eps-1) / (p1**2-p2**2) * (p2*cos(pd)*sin(pd) - o1*sin(od)*cos(pd)) / (o1**2 - p2**2)
 
 	# Handle Cauchy singularities
@@ -242,10 +242,6 @@ def pythonic_main():
 	idx = np.where(1 - np.isfinite(F))
 	F[idx] = 0
 	# F[idx] = cauchy[idx]
-
-	# print F[0,:]
-	# print Bt
-	# exit()
 
 	'''
 	Run Neuman series and test for convergence of the fields
@@ -282,6 +278,13 @@ def pythonic_main():
 		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * integral
 
 	'''
+	Test Power Conservation
+	'''
+
+	error = (1+am[0]) * (1-am[0]) - np.sum(abs(am[1:])**2) - np.sum((abs(qt)**2 + abs(qr)**2) * np.conjugate(Bc) / Bc) * dp
+	print 'Power Conservation: ', error.real
+
+	'''
 	Plot results
 	'''
 
@@ -294,6 +297,10 @@ def pythonic_main():
 
 	ax[0].axhline(0,color='k',ls=':')
 	ax[1].axhline(0,color='k',ls=':')
+
+	fig2, ax2 = plt.subplots(1,figsize=(7,5))
+	ax2.plot(p/k,Bc.real,'g')
+	ax2.plot(p/k,Bc.imag,'g:')
 
 	# plt.figure()
 	# ext = putil.getExtent(p/k,p/k)
@@ -586,6 +593,16 @@ def test_qt():
 
 	plt.show()
 
+def f_integral():
+
+	p = 1
+	r = 2
+
+	x = np.logspace(0,5,10000)
+	F = exp(-1j*p*x) * (-p*sin(r*x) + 1j * cos(r*x)) / (p**2-r**2)
+
+	plt.plot(x,F)
+	plt.show()
 
 if __name__ == '__main__':
   # test_beta()
@@ -593,3 +610,4 @@ if __name__ == '__main__':
   # test_qt()
   pythonic_main()
   # main()
+  # f_integral()
