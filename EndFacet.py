@@ -23,7 +23,8 @@ np.set_printoptions(linewidth=150, precision=8)
 pi = sp.pi
 sqrt = sp.emath.sqrt
 mu = 4*pi * 1e-7
-c  = 299792458
+# c  = 299792458
+c = 3e8
 
 # units
 cm = 1e-2
@@ -156,7 +157,6 @@ def test_beta():
 
 		print "%.5f, %.5f, %.5f" % (b*a, target_vals[i], abs((b*a - target_vals[i]) / target_vals[i]))
 
-
 def pythonic_main():
 	'''
 	rewrite of the algorithm with 3 goals: 1) improve performance by using numpy methods instead
@@ -169,9 +169,10 @@ def pythonic_main():
 	n = sqrt(20)
 	d = 1 * cm
 	kd = 0.628
+	pol = 'TE'
 
 	p_max = 20 			# max transverse wavevector to use for indefinite integrals; multiples of k
-	p_res = 3e3	      # number of steps to use in integration
+	p_res = 100     # number of steps to use in integration
 
 	imax = 4 				# max number of iterations to run
 
@@ -185,9 +186,20 @@ def pythonic_main():
 	w = c*k
 	eps = n**2
 
+	'''
+	# Debugger for mode solver
+	wl = 1.0
+	k = 2*pi/wl
+	kd = 1.0
+	d = kd/k	
+	print beta_marcuse(1.432,d,wl=wl,pol='TE') * d
+	print 'Should be 1.21972'
+	exit()
+	'''
+
 	# wavevectors
 	N = numModes(n,1,2*d/wl)
-	Bm = beta_marcuse(n,d,wl=wl,Nmodes=N, pol='TE')			# Propagation constants of waveguide modes
+	Bm = beta_marcuse(n,d,wl=wl,Nmodes=N, pol=pol)			# Propagation constants of waveguide modes
 	Bo = Bm[0]
 
 	p = np.linspace(1e-15,p_max*k,p_res)					# transverse wavevectors in air (independent variable for algorithm)
@@ -199,15 +211,30 @@ def pythonic_main():
 	gm  = sqrt(      -k**2 + Bm**2)						# transverse wavevectors in air for guided modes
 	Km  = sqrt(n**2 * k**2 - Bm**2)						# transverse wavevectors in high-index region for guided modes
 
+	Bc = Bc.real - 1j*Bc.imag
+	o =  o.real  - 1j*o.imag
+	gm = gm.real - 1j*gm.imag
+	Km = Km.real - 1j*Km.imag
+
+	
+
+
+
 	# Mode Amplitude Coefficients
 	P = 1
 
 	Am = sqrt(2*w*mu*P / (Bm*d + Bm/gm))
+	# Am = sqrt(2*w*mu*P/(Bm*(d+sin(2*Km*d)/(2*Km)+cos(Km*d)**2*4*gm*d))) *100
 
 	Bt = sqrt(2*w*mu*P / (pi*abs(Bc))) # might need to make these |Bc| instead of Bc
 	Br = sqrt(2*p**2*w*mu*P / (pi*abs(Bc)*(p**2*cos(o*d)**2 + o**2*sin(o*d)**2)))
 	
 	Dr = 1/2. * exp(-1j*p*d) * (cos(o*d) + 1j*o/p * sin(o*d))
+
+
+
+
+
 
 	# Overlap Integral Solutions, Gm(p) and F(p',p) = F(p1,p2)
 
@@ -232,16 +259,13 @@ def pythonic_main():
 	F  = 2*Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
 									 2*(D1 * (exp(1j*p1*d) * (p2*sin(pd)+1j*p1*cos(pd))) - 1j*p1 ).real / (p1**2-p2**2) )
 
-	# This method for F matches the original slow algorithm:
-	# F = k**2 * (n**2-1) * Br1 * Bt2 / (p1**2 - p2**2) * ( (p2*cos(o1*d)*sin(p2*d) - o1*sin(o1*d)*cos(p2*d))/(o1**2 - p2**2) ) 
-
-	# F = 2*Br1*Bt1*k**2*(eps-1) / (p1**2-p2**2) * (p2*cos(pd)*sin(pd) - o1*sin(od)*cos(pd)) / (o1**2 - p2**2)
 
 	# Handle Cauchy singularities
 	cauchy = pi * Bt1.transpose() * Br1 * (D1 + Dstar)
 	idx = np.where(1 - np.isfinite(F))
 	F[idx] = 0
 	# F[idx] = cauchy[idx]
+
 
 	'''
 	Run Neuman series and test for convergence of the fields
@@ -266,7 +290,7 @@ def pythonic_main():
 
 		# an
 		am = np.array(
-			[1/(4*w*mu*P) * np.sum(qt * (Bm[n]-Bc) * G[n,:]) * dp for n in range(N)]
+			[ (1/(4*w*mu*P) * np.sum(qt * (Bm[n]-Bc) * G[n,:]) * dp) for n in range(N) ]
 			)
 		print am
 
@@ -277,12 +301,12 @@ def pythonic_main():
 		
 		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * integral
 
-	'''
-	Test Power Conservation
-	'''
+		'''
+		Test Power Conservation
+		'''
 
-	error = (1+am[0]) * (1-am[0]) - np.sum(abs(am[1:])**2) - np.sum((abs(qt)**2 + abs(qr)**2) * np.conjugate(Bc) / Bc) * dp
-	print 'Power Conservation: ', error.real
+		error = (1+am[0]) * (1-am[0].conjugate()) - np.sum(abs(am[1:])**2) - np.sum((abs(qt)**2 + abs(qr)**2) * np.conjugate(Bc) / Bc) * dp
+		print 'Power Conservation: ', error.real
 
 	'''
 	Plot results
@@ -298,9 +322,11 @@ def pythonic_main():
 	ax[0].axhline(0,color='k',ls=':')
 	ax[1].axhline(0,color='k',ls=':')
 
-	fig2, ax2 = plt.subplots(1,figsize=(7,5))
-	ax2.plot(p/k,Bc.real,'g')
-	ax2.plot(p/k,Bc.imag,'g:')
+	ax[0].set_xlim(0,150/k)
+	# ax[0].set_xlim(0,1,5)
+	# fig2, ax2 = plt.subplots(1,figsize=(7,5))
+	# ax2.plot(p/k,Bc.real,'g')
+	# ax2.plot(p/k,Bc.imag,'g:')
 
 	# plt.figure()
 	# ext = putil.getExtent(p/k,p/k)
@@ -443,7 +469,8 @@ Helper Functions
 '''
 
 def B_continuum(p,k):
-	return sqrt(k**2-p**2)
+	Bc = sqrt(k**2-p**2)
+	return Bc.real - 1j * Bc.imag
 
 def o(n,p,k):
 	# transverse wavevector inside structure for continuum modes
@@ -510,10 +537,8 @@ def F(p2,p,w,n,d):
 		return 0
 
 	else:
-		# return Bt(w,p)
-		return k**2 * (n**2-1) * Br(w,n,d,p2) * Bt(w,p) / (p2**2 - p**2) * ( (p*cos(s2*d)*sin(p*d) - s2*sin(s2*d)*cos(p*d))/(s2**2 - p**2) ) 
-		# return -k**2 * (n**2-1) * Br(w,n,d,p2) * Bt(w,p) * (sin((s2+p)*d)/(s2+p) + sin(s2-p)/(s2-p)) / (p2**2 - p**2)
-		# return -k**2 * (n**2-1) * Br(w,n,d,p2) * Bt(w,p) * (sin((s2+p)*d)/(s2+p) + sin((s2-p)*d)/(s2-p)) / (p2**2 - p**2)
+		return 2*Br(w,n,d,p2) * Bt(w,p) * ((s2*sin(s2*d)*cos(p*d) - p*cos(s2*d)*sin(p*d))/(s2**2-p**2) + \
+									 2*(Dr(p2,w,n,d) * (exp(1j*p2*d) * (p *sin(p*d)+1j*p2*cos(p*d))) - 1j*p2 ).real / (p2**2-p**2) )
 
 
 def QT(p,w,n,d,B_modes,am,qr,ps):
@@ -526,10 +551,6 @@ def QT(p,w,n,d,B_modes,am,qr,ps):
 	Gm = lambda m,p: G(m,p,w,n,d,B_modes[m])
 
 	Fpp2 = [F(p2,p,w,n,d) for p2 in ps]
-
-	# print p
-	# print np.array(Fpp2)
-	# exit()
 
 	integrand = qr * (Bo - Bc(ps)) * Fpp2
 	dp = ps[1]-ps[0]
