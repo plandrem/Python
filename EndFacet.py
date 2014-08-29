@@ -35,7 +35,7 @@ colors = ['r','g','b','#FFE21A','c','m']
 plt.rcParams['image.origin'] = 'lower'
 plt.rcParams['image.interpolation'] = 'nearest'
 
-def beta_marcuse(n,d,wl=1.,pol='TM',Nmodes=1,plot=False):
+def beta_marcuse(n,d,wl=1.,pol='TM',Nmodes=None,plot=False):
 
 	'''
 	Based on theory in Marcuse, 1970 "Radiation Losses in Tapered Dielectric Waveguides"
@@ -54,8 +54,6 @@ def beta_marcuse(n,d,wl=1.,pol='TM',Nmodes=1,plot=False):
 	d - half-thickness of slab
 
 	'''
-
-	Bs = np.zeros(Nmodes) * np.nan
 
 	k = 2*pi/wl
 
@@ -83,18 +81,35 @@ def beta_marcuse(n,d,wl=1.,pol='TM',Nmodes=1,plot=False):
 	# plt.show()
 	# exit()
 
+	Bs = np.array([])
+
 	for i,idx in enumerate(np.nonzero(diff)[0][::-1]):
+		print diff[idx]
+		print b[idx]*d
+		if diff[idx] == 2.0:
+			b_low = b[idx-1]
+			b_high = b[idx+1]
 
-		b_low = b[idx-1]
-		b_high = b[idx+1]
+			Bs = np.append(Bs, sp.optimize.brentq(trans,b_low,b_high))
 
-		if i < Nmodes: Bs[i] = sp.optimize.brentq(trans,b_low,b_high)
+	# Truncate or pad output as necessary
+	if len(Bs) < Nmodes:
+		pad = np.ones(Nmodes - len(Bs)) * np.nan
+		Bs = np.hstack((Bs,pad))
+		
+	elif len(Bs) > Nmodes:
+		Bs = Bs[:Nmodes] 
 
+	# Plots for debugging
 	if plot:
+		print 'Number of modes:', Nmodes
+		print Bs*d
+
 		plt.plot(b*d,tan(K(b)*d),'r')
 		plt.plot(b*d,C * np.real(g(b)/K(b)),'b')
-		plt.plot(b*d,trans(b),'k')
+		plt.plot(b*d,trans(b),'g', lw=2)
 		plt.plot(b*d,np.sign(trans(b)),'m:')
+		plt.axhline(0, c='k')
 		plt.ylim(-10,10)
 		plt.show()
 
@@ -136,7 +151,7 @@ def main():
 
 	n = sqrt(20)
 	wl = 10. # Set to 10 to match Gelin values for qt
-	kd = np.array([0.209,0.628])
+	kd = np.array([2.])
 	# kd = np.array([0.209,0.418,0.628,0.837,1.04,1.25])
 	# kd = np.linspace(1e-15,1.5,100)
 	pol = 'TE'
@@ -177,8 +192,10 @@ def main():
 	Bm = np.zeros((np.amax(N),len(d)))
 
 	for j,dj in enumerate(d):
-		Bm[:,j] = beta_marcuse(n,dj,wl=wl,Nmodes=N, pol=pol)			# Propagation constants of waveguide modes
+		Bm[:,j] = beta_marcuse(n,dj,wl=wl,Nmodes=N, pol=pol, plot=True)			# Propagation constants of waveguide modes
 		Bo[j] = Bm[0,j]
+
+	exit()
 
 	p = np.tile(np.linspace(1e-15,p_max*k,p_res), (len(d),1))					# transverse wavevectors in air (independent variable for algorithm)
 	p = p.transpose()
