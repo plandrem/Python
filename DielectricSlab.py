@@ -79,7 +79,7 @@ def numModes(ncore,nclad,d):
 	critical_angle = sp.arcsin(nclad/ncore)
 	M = sp.sin(pi/2. - critical_angle) / (1/(2*d))
 		
-	return int(np.ceil(M))
+	return np.ceil(M).astype(int)
 	
 def numTotalModes(ncore,nclad,d):
 	

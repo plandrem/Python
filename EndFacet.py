@@ -36,7 +36,7 @@ colors = ['r','g','b','#FFE21A','c','m']
 plt.rcParams['image.origin'] = 'lower'
 plt.rcParams['image.interpolation'] = 'nearest'
 
-def beta_marcuse(n,d,wl=1,pol='TM',Nmodes=1,plot=False):
+def beta_marcuse(n,d,wl=1.,pol='TM',Nmodes=1,plot=False):
 
 	'''
 	Based on theory in Marcuse, 1970 "Radiation Losses in Tapered Dielectric Waveguides"
@@ -47,6 +47,8 @@ def beta_marcuse(n,d,wl=1,pol='TM',Nmodes=1,plot=False):
 	with np.nan
 
 	0th index result corresponds to fundamental
+
+	Currently only valid for even modes!
 
 	INPUTS:
 	n - index of slab
@@ -61,9 +63,12 @@ def beta_marcuse(n,d,wl=1,pol='TM',Nmodes=1,plot=False):
 	K = lambda b: sqrt((n*k)**2 - b**2)
 	g = lambda b: sqrt(b**2 - k**2)
 
-	C = n**2 if pol == 'TM' else 1
+	C = n**2 if pol == 'TM' else 1.
 
 	trans = lambda b: tan(K(b) * d) - C * np.real(g(b)/K(b))
+
+	# Find zero crossings, then use the brentq method to find the precise zero crossing 
+	# between the two nearest points in the array
 
 	b = np.linspace(0,n*k - (1e-15),10000)
 	diff = np.diff(np.sign(trans(b)))
@@ -76,10 +81,10 @@ def beta_marcuse(n,d,wl=1,pol='TM',Nmodes=1,plot=False):
 		if i < Nmodes: Bs[i] = sp.optimize.brentq(trans,b_low,b_high)
 
 	if plot:
-		plt.plot(b,tan(K(b)*d),'r')
-		plt.plot(b,C * np.real(g(b)/K(b)),'b')
-		plt.plot(b,trans(b),'k')
-		plt.plot(b,np.sign(trans(b)),'m:')
+		plt.plot(b*d,tan(K(b)*d),'r')
+		plt.plot(b*d,C * np.real(g(b)/K(b)),'b')
+		plt.plot(b*d,trans(b),'k')
+		plt.plot(b*d,np.sign(trans(b)),'m:')
 		plt.ylim(-10,10)
 		plt.show()
 
@@ -168,11 +173,11 @@ def pythonic_main():
 
 	n = sqrt(20)
 	d = 1 * cm
-	kd = 0.628
+	kd = np.array([0.209,0.418,0.628,0.837,1.04,1.25])
 	pol = 'TE'
 
 	p_max = 20 			# max transverse wavevector to use for indefinite integrals; multiples of k
-	p_res = 100     # number of steps to use in integration
+	p_res = 2e3     # number of steps to use in integration
 
 	imax = 4 				# max number of iterations to run
 
@@ -186,21 +191,24 @@ def pythonic_main():
 	w = c*k
 	eps = n**2
 
-	'''
-	# Debugger for mode solver
-	wl = 1.0
-	k = 2*pi/wl
-	kd = 1.0
-	d = kd/k	
-	print beta_marcuse(1.432,d,wl=wl,pol='TE') * d
-	print 'Should be 1.21972'
-	exit()
-	'''
+	
+	# # Debugger for mode solver
+	# wl = 1.0
+	# k = 2*pi/wl
+	# kd = 1.0
+	# d = kd/k	
+	# print beta_marcuse(1.432,d,wl=wl,pol='TE',plot=True) * d
+	# print 'Should be 1.21972'
+	# exit()
+	
 
 	# wavevectors
 	N = numModes(n,1,2*d/wl)
 	Bm = beta_marcuse(n,d,wl=wl,Nmodes=N, pol=pol)			# Propagation constants of waveguide modes
-	Bo = Bm[0]
+	Bo = Bm[0,:]
+
+	print Bm.shape()
+	exit()
 
 	p = np.linspace(1e-15,p_max*k,p_res)					# transverse wavevectors in air (independent variable for algorithm)
 	dp = p[1]-p[0]
@@ -224,12 +232,20 @@ def pythonic_main():
 	P = 1
 
 	Am = sqrt(2*w*mu*P / (Bm*d + Bm/gm))
-	# Am = sqrt(2*w*mu*P/(Bm*(d+sin(2*Km*d)/(2*Km)+cos(Km*d)**2*4*gm*d))) *100
+
+	# Bt = sqrt(2*w*mu*P / (pi*Bc)) # might need to make these |Bc| instead of Bc
+	# Br = sqrt(2*p**2*w*mu*P / (pi*Bc*(p**2*cos(o*d)**2 + o**2*sin(o*d)**2)))
 
 	Bt = sqrt(2*w*mu*P / (pi*abs(Bc))) # might need to make these |Bc| instead of Bc
 	Br = sqrt(2*p**2*w*mu*P / (pi*abs(Bc)*(p**2*cos(o*d)**2 + o**2*sin(o*d)**2)))
 	
 	Dr = 1/2. * exp(-1j*p*d) * (cos(o*d) + 1j*o/p * sin(o*d))
+
+	# plt.plot(p/k,Bt,'r')
+	# plt.plot(p/k,Br.real,'b')
+	# plt.show()
+	# print Am
+	# exit()
 
 
 
@@ -256,15 +272,20 @@ def pythonic_main():
 
 	# This method for F is based on a more direct solution of the field overlap integral, with less
 	# subsequent algebra:
-	F  = 2*Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
-									 2*(D1 * (exp(1j*p1*d) * (p2*sin(pd)+1j*p1*cos(pd))) - 1j*p1 ).real / (p1**2-p2**2) )
-
-
+	# F  = 2*Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
+	# 								 2*(D1 * (exp(1j*p1*d) * (p2*sin(pd)+1j*p1*cos(pd))) - 1j*p1 ).real / (p1**2-p2**2) )
+	
 	# Handle Cauchy singularities
 	cauchy = pi * Bt1.transpose() * Br1 * (D1 + Dstar)
 	idx = np.where(1 - np.isfinite(F))
-	F[idx] = 0
+	# F[idx] = 0
 	# F[idx] = cauchy[idx]
+
+	# Gelin's definition of F, with the sin arguments corrected:
+	F = np.eye(p_res) * Bt1.transpose() * Br1 * (D1 + Dstar) - \
+			np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-np.eye(p_res))
+
+
 
 
 	'''
@@ -281,23 +302,26 @@ def pythonic_main():
 
 		# Qt
 		qr1 = np.tile(qr,(p_res,1))
-		# integral = np.trapz(qr1 * (Bo-Bc1) * F, dx=dp, axis=1)
-		integral = np.sum(qr1 * (Bo-Bc1) * F, axis=1) * dp
+		integral = np.trapz(qr1 * (Bo-Bc1) * F, dx=dp, axis=1)
+		# integral = np.sum(qr1 * (Bo-Bc1) * F, axis=1) * dp
 
 		sigma = np.sum([(Bo-Bm[n]) * am[n] * G[n,:] for n in range(N)], axis=0)
 
 		qt = 1/(2*w*mu*P) * abs(Bc) / (Bo+Bc) * (2*Bo*G[0,:] + integral + sigma)
 
 		# an
+		am_prev = am
 		am = np.array(
 			[ (1/(4*w*mu*P) * np.sum(qt * (Bm[n]-Bc) * G[n,:]) * dp) for n in range(N) ]
 			)
 		print am
+		print 'Delta ao: ', abs(am_prev-am)
+
 
 		#Qr
 		qt1 = np.tile(qt,(p_res,1))
-		# integral = np.trapz(qt1 * (Bc2-Bc1) * F.transpose(), dx=dp, axis=1)
-		integral = np.sum(qt1 * (Bc2-Bc1) * F.transpose(), axis=1) * dp
+		integral = np.trapz(qt1 * (Bc2-Bc1) * F.transpose(), dx=dp, axis=1)
+		# integral = np.sum(qt1 * (Bc2-Bc1) * F.transpose(), axis=1) * dp
 		
 		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * integral
 
@@ -305,8 +329,14 @@ def pythonic_main():
 		Test Power Conservation
 		'''
 
-		error = (1+am[0]) * (1-am[0].conjugate()) - np.sum(abs(am[1:])**2) - np.sum((abs(qt)**2 + abs(qr)**2) * np.conjugate(Bc) / Bc) * dp
-		print 'Power Conservation: ', error.real
+		error = (1+am[0]) * (1-am[0].conjugate()) - np.sum(abs(am[1:])**2) - np.sum((abs(qt)**2 + abs(qr)**2) * np.conjugate(Bc) / abs(Bc)) * dp
+		print 'Power Conservation: ', abs(error.real)
+
+		'''
+		Test Gelin, eq. 14
+		'''
+
+		print 1/(4*w*mu*P) * np.trapz(qt * (Bm[0]+Bc) * G[0,:], dx=dp)
 
 	'''
 	Plot results
@@ -594,41 +624,10 @@ def QR(p,w,n,d,qt,ps):
 
 	return 1/(4*w*mu*P) * abs(Bc(p))/Bc(p) * integral
 
-def test_qt():
 
-	wl = 1
-	k = 2*pi/wl
-	w = c*k
-
-	n = sqrt(20)
-	d = 0.5/k
-
-	Bo = beta_marcuse(n,d,wl=wl,pol='TE',Nmodes=1)[0]
-
-	p = np.linspace(0,1.5,100)
-
-	qts = np.array([qt(x,w,n,d,Bo) for x in p])
-
-	plt.plot(p,qts.real,'r')
-	plt.plot(p,qts.imag,'b')
-
-	plt.show()
-
-def f_integral():
-
-	p = 1
-	r = 2
-
-	x = np.logspace(0,5,10000)
-	F = exp(-1j*p*x) * (-p*sin(r*x) + 1j * cos(r*x)) / (p**2-r**2)
-
-	plt.plot(x,F)
-	plt.show()
 
 if __name__ == '__main__':
   # test_beta()
   # test_beta_marcuse()
-  # test_qt()
   pythonic_main()
   # main()
-  # f_integral()
