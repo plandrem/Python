@@ -125,53 +125,6 @@ def test_beta_marcuse():
 		bTM = beta_marcuse(n,d,pol='TM',wl=wl)[0]
 		print "%.5f, %.5f, %.5f" % (bTM * d, target_vals_TM[i], abs((bTM * d - target_vals_TM[i]) / target_vals_TM[i]))
 
-def test_beta():
-
-	'''
-	Compare mode solver solutions against tabulated values in Marcuse, 1970 
-	"Radiation Losses in Tapered Dielectric Waveguides"
-
-	To avoid confusion, Marcuse's 'd' (which is half the slab height) will be referred to as 'a'
-	d here is h/wl = 2*a/wl
-	'''
-
-	target_vals = [0.25781,0.54916,1.21972,1.93825,2.66839,4.13075]
-
-	wl = 1.0
-	k = 2*pi/wl
-
-
-	print "TE\n"
-
-	kas = np.array([0.25,0.5,1.0,1.5,2.0,3.0])
-
-	for i,ka in enumerate(kas):
-		a = ka/k
-
-		h = 2 * a
-
-		d = h/wl
-
-		b = Beta(1.432,1.0,d,1,pol='TE')[0] * wl
-
-		print "%.5f, %.5f, %.5f" % (b*a, target_vals[i], abs((b*a - target_vals[i]) / target_vals[i]))
-
-	print 
-	print "TM\n"
-
-	target_vals = [0.25207,0.51677,1.12809,1.84210,2.58934,4.08131]
-
-	for i,ka in enumerate(kas):
-		a = ka/k
-
-		h = 2 * a
-
-		d = h/wl
-
-		b = Beta(1.432,1,d,1,pol='TM')[0] * wl
-
-		print "%.5f, %.5f, %.5f" % (b*a, target_vals[i], abs((b*a - target_vals[i]) / target_vals[i]))
-
 def pythonic_main():
 	'''
 	rewrite of the algorithm with 3 goals: 1) improve performance by using numpy methods instead
