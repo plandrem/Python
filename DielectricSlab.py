@@ -76,6 +76,7 @@ R_n4_ds2 = np.loadtxt('C:\\Users\\Patrick\\Documents\\PhD\\Data\\Rectangular Res
 R_n4_ds3 = np.loadtxt('C:\\Users\\Patrick\\Documents\\PhD\\Data\\Rectangular Resonator\\reflection_coefficient_ds_mode_4.txt')
 '''
 def numModes(ncore,nclad,d):
+	# Caution - have noticed inconsistencies with D. Marcuse calculation of number of modes! - see EndFacet.py
 	critical_angle = sp.arcsin(nclad/ncore)
 	M = sp.sin(pi/2. - critical_angle) / (1/(2*d))
 		

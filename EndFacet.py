@@ -14,8 +14,6 @@ import time
 
 # import pudb; pu.db
 
-from DielectricSlab import Beta, numModes
-
 from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
 
 np.set_printoptions(linewidth=150, precision=8)
@@ -83,18 +81,20 @@ def beta_marcuse(n,d,wl=1.,pol='TM',Nmodes=None,plot=False):
 
 	Bs = np.array([])
 
+	toggle = True # need to accept alternating zero crossings - the true modes alternate with infinite discontinuites of the tangent function
 	for i,idx in enumerate(np.nonzero(diff)[0][::-1]):
-		print diff[idx]
-		print b[idx]*d
-		if diff[idx] == 2.0:
+
+		if toggle:
 			b_low = b[idx-1]
 			b_high = b[idx+1]
 
 			Bs = np.append(Bs, sp.optimize.brentq(trans,b_low,b_high))
 
+		toggle = not toggle
+
 	# Truncate or pad output as necessary
 	if len(Bs) < Nmodes:
-		pad = np.ones(Nmodes - len(Bs)) * np.nan
+		pad = np.zeros(Nmodes - len(Bs)) * np.nan
 		Bs = np.hstack((Bs,pad))
 		
 	elif len(Bs) > Nmodes:
@@ -140,6 +140,9 @@ def test_beta_marcuse():
 		bTM = beta_marcuse(n,d,pol='TM',wl=wl)[0]
 		print "%.5f, %.5f, %.5f" % (bTM * d, target_vals_TM[i], abs((bTM * d - target_vals_TM[i]) / target_vals_TM[i]))
 
+def numModes(ncore,nclad,kd):
+	return np.ceil(sqrt(ncore**2 - nclad**2)*kd/pi).astype(int)
+
 def main():
 	'''
 	rewrite of the algorithm with 3 goals: 1) improve performance by using numpy methods instead
@@ -151,9 +154,9 @@ def main():
 
 	n = sqrt(20)
 	wl = 10. # Set to 10 to match Gelin values for qt
-	kd = np.array([2.])
+	# kd = np.array([2.])
 	# kd = np.array([0.209,0.418,0.628,0.837,1.04,1.25])
-	# kd = np.linspace(1e-15,1.5,100)
+	kd = np.linspace(1e-15,1.5,10)
 	pol = 'TE'
 
 	p_max = 20 			# max transverse wavevector to use for indefinite integrals; multiples of k
@@ -185,17 +188,15 @@ def main():
 
 	# wavevectors
 
-	Ns = numModes(n,1,2*d/wl)
+	Ns = numModes(n,1,kd)
 	N = np.amax(Ns)
 	
 	Bo = np.zeros(len(d))
 	Bm = np.zeros((np.amax(N),len(d)))
 
 	for j,dj in enumerate(d):
-		Bm[:,j] = beta_marcuse(n,dj,wl=wl,Nmodes=N, pol=pol, plot=True)			# Propagation constants of waveguide modes
+		Bm[:,j] = beta_marcuse(n,dj,wl=wl,Nmodes=N, pol=pol, plot=False)			# Propagation constants of waveguide modes
 		Bo[j] = Bm[0,j]
-
-	exit()
 
 	p = np.tile(np.linspace(1e-15,p_max*k,p_res), (len(d),1))					# transverse wavevectors in air (independent variable for algorithm)
 	p = p.transpose()
@@ -245,6 +246,7 @@ def main():
 	for i in range(N):
 		G[i,:,:] = 2 * k**2 * (eps-1) * Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d) - p*sin(p*d)) / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
 
+
 	# Convert to multi-dimensional arrays to work with functions of p',p. When transposing, 
 	# the index refering to d is kept as the final index
 
@@ -287,6 +289,12 @@ def main():
 	am = np.zeros((N,Nds))
 	qr = np.zeros((p_res,Nds))	
 
+	# Remove nan instances for iteration purposes
+	nanMask = np.isnan(Bm)
+	G = np.nan_to_num(G)
+	Bm = np.nan_to_num(Bm)
+	Bo = np.nan_to_num(Bo)
+
 	for i in range(imax):
 
 		print '\nComputing iteration %u of %u' % (i+1,imax)
@@ -305,7 +313,7 @@ def main():
 		am = np.array(
 			[ (1/(4*w*mu*P) * np.sum(qt * (Bm[n]-Bc) * G[n,:], axis=0) * dp) for n in range(N) ]
 			)
-		print 'Delta ao: ', abs(am_prev-am)
+		print 'Delta ao:', abs(am_prev-am)
 
 
 		#Qr
@@ -340,7 +348,12 @@ def main():
 	Plot results
 	'''
 
-	fig, ax = plt.subplots(3,figsize=(7,8))
+	# Remove values for cutoff modes
+	print am
+	am[np.nonzero(nanMask)] = complex(np.nan, np.nan)
+	print am
+
+	fig, ax = plt.subplots(2,figsize=(7,5))
 
 	ax[0].plot(p/k,qt.real,'r')
 	ax[0].plot(p/k,qt.imag,'r:')
@@ -355,8 +368,13 @@ def main():
 	# ax[1].set_xlim(0,10)
 	# ax[1].set_ylim(0,1.5)
 
-	ax[2].plot(kd,am[0,:],'g')
-	ax[2].set_ylim(0,1)
+	refFig, refAx = plt.subplots(2,figsize=(7,5))
+
+	for j in range(N):
+		refAx[0].plot(kd,np.abs(  am[j,:]),color=colors[j],marker='o')
+		refAx[1].plot(kd,np.angle(am[j,:]) / pi,color=colors[j],marker='o')
+	
+	refAx[0].set_ylim(0,1)
 
 	# fig2, ax2 = plt.subplots(1,figsize=(7,5))
 	# ax2.plot(p/k,Bc.real,'g')
