@@ -469,6 +469,36 @@ def loadEpsGST326(material,units='wl'):
 		
 	return e1 - e2*1j
 
+def stackPoints(arrays):
+	'''
+	merge a series of unequal length arrays by padding each to a common length with np.nan.
+
+	Upon completion, indexing 'result[0]' will return a series of the 0th index points from each
+	of the source arrays.
+	'''
+
+	# Find largest length
+	N = 0
+	for a in arrays:
+		if len(a) > N: N = len(a)
+
+	result = np.zeros((N,len(arrays)))
+
+	# Pad arrays and append to output
+	for i,a in enumerate(arrays):
+		pad = np.ones(N - len(a)) * np.nan
+		result[:,i] = np.append(a,pad)
+
+	return result
+
+def test_stackPoints():
+
+	a = np.array([1,2])
+	b = np.array([3,4,5])
+
+	print stackPoints([a,b])
+	print stackPoints([a,b])[0]
+
 
 if __name__ == '__main__':
 	example_getEps_GST()

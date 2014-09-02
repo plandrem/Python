@@ -143,37 +143,49 @@ def test_beta_marcuse():
 def numModes(ncore,nclad,kd):
 	return np.ceil(sqrt(ncore**2 - nclad**2)*kd/pi).astype(int)
 
-def main():
-	'''
-	rewrite of the algorithm with 3 goals: 1) improve performance by using numpy methods instead
-	of nested for-loops; 2) catch/eliminate typos from the first attempt; and 3) build a more
-	elegant API so I'm not recalculating k in every function call.
+def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,convergence_threshold=1e-5):
 	'''
 
-	# Define Key Simulation Parameters
+	Solve for amplitudes of all scattered modes resulting from a guided mode incident on the 
+	abrupt truncation of a symmetric dielectric slab. Method adapted from Gelin et al (1981): 
 
-	n = sqrt(20)
-	wl = 10. # Set to 10 to match Gelin values for qt
-	kd = np.array([1.375]) # Diverges?!
-	# kd = np.array([0.209,0.418,0.628,0.837,1.04,1.25])
-	# kd = np.linspace(1.,1.5,5)
-	pol = 'TE'
+	"Rigorous Analysis of the Scattering of Surface Waves in an Abruptly Ended Slab Dielectric Waveguide"
 
-	print kd
+	INPUTS
 
-	incident_mode = 0
+	kd [np.array] - free-space wavevector x slab half-height
+	n  [float]    - slab index
+	incident_mode [int] - mode order to use as the source (0 = fundamental; currently treats all modes as even, ie 
+		"1" will actually be the mode with 3 field antinodes)
 
-	p_max = 20 			# max transverse wavevector to use for indefinite integrals; multiples of k
-	p_res = 0.5e3     # number of steps to use in integration
+	pol   ['TE' or 'TM']; TM currently not functional.
+	p_max [int] - largest transverse wavevector used for infinite integral calculations, in units of k
+	p_res [int] - number of p values to be used from 0 to k*p_max
+	imax  [int] - maximum number of iterations allowed while testing for convergence
+	convergence_threshold [float] - the convergence routine will run until the magnitude of the reflection coefficients drop
+		below this value
 
-	imax = 100 				# max number of iterations to run
-	convergence_threshold = 1e-5
+	OUTPUTS
+
+	--note-- will return np.nan upon failure to converge
+
+	am [np.array] - complex reflection coefficients for slab guided modes.
+
+	'''
+
+	'''
+	Normalize inputs
+	'''
+	if type(kd) in [int, float, np.float64]: kd = np.array([kd])
+	if type(kd) == list: kd = np.array(kd)
+
 
 	'''
 	Calculate wavevectors and other physical quantities needed for all functions
 	'''
 
 	# constants
+	wl = 10. # Set to 10 to match Gelin values for qt
 	k = 2*pi/wl
 	d = kd/k
 	w = c*k
@@ -301,11 +313,13 @@ def main():
 	Bm = np.nan_to_num(Bm)
 	Bo = np.nan_to_num(Bo)
 
-	repeat = True
+	repeat = True; converged = False
 
 	for i in range(imax):
 
-		if repeat == False: break
+		if repeat == False:
+			converged = True
+			break
 
 		print '\nComputing iteration %u of %u' % (i+1,imax)
 
@@ -380,7 +394,6 @@ def main():
 
 	# Remove values for cutoff modes
 	am[np.nonzero(nanMask)] = complex(np.nan, np.nan)
-	print am
 
 	# scattering coefficients
 
@@ -401,18 +414,45 @@ def main():
 
 	# Reflection Magnitude and Phase
 
-	refFig, refAx = plt.subplots(2,figsize=(7,5))
+	# refFig, refAx = plt.subplots(2,figsize=(7,5))
 
-	for j in range(N):
-		refAx[0].plot(kd,np.abs(  am[j,:]),color=colors[j],marker='o')
-		refAx[1].plot(kd,np.angle(am[j,:]) / pi,color=colors[j],marker='o')
+	# for j in range(N):
+	# 	refAx[0].plot(kd,np.abs(  am[j,:]),color=colors[j],marker='o')
+	# 	refAx[1].plot(kd,np.angle(am[j,:]) / pi,color=colors[j],marker='o')
 	
-	refAx[0].set_ylim(0,1)
+	# refAx[0].set_ylim(0,1)
 
+	# plt.show()
+
+	if converged:
+		return am
+	else:
+		return np.nan * np.ones(N)
+
+
+
+
+def main():
+
+	# Define Key Simulation Parameters
+
+	n = sqrt(20)
+	# kd = np.array([1.0])
+	# kd = np.array([1.375]) # Diverges?!
+	# kd = np.array([0.209,0.418,0.628,0.837,1.04,1.25])
+	kds = np.linspace(1e-9,1.5,5)
+
+	ams = putil.stackPoints([Reflection(kd,n,p_res=1e2) for kd in kds])
+
+	plt.plot(kds, ams.transpose())
 	plt.show()
+
+
+
 
 
 if __name__ == '__main__':
   # test_beta()
   # test_beta_marcuse()
   main()
+  # test_stackPoints()
