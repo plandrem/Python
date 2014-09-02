@@ -154,15 +154,20 @@ def main():
 
 	n = sqrt(20)
 	wl = 10. # Set to 10 to match Gelin values for qt
-	# kd = np.array([2.])
+	kd = np.array([1.375]) # Diverges?!
 	# kd = np.array([0.209,0.418,0.628,0.837,1.04,1.25])
-	kd = np.linspace(1e-15,1.5,10)
+	# kd = np.linspace(1.,1.5,5)
 	pol = 'TE'
 
-	p_max = 20 			# max transverse wavevector to use for indefinite integrals; multiples of k
-	p_res = 1e3     # number of steps to use in integration
+	print kd
 
-	imax = 4 				# max number of iterations to run
+	incident_mode = 0
+
+	p_max = 20 			# max transverse wavevector to use for indefinite integrals; multiples of k
+	p_res = 0.5e3     # number of steps to use in integration
+
+	imax = 100 				# max number of iterations to run
+	convergence_threshold = 1e-5
 
 	'''
 	Calculate wavevectors and other physical quantities needed for all functions
@@ -190,13 +195,14 @@ def main():
 
 	Ns = numModes(n,1,kd)
 	N = np.amax(Ns)
+	print 'Number of Modes Detected:', N
 	
 	Bo = np.zeros(len(d))
 	Bm = np.zeros((np.amax(N),len(d)))
 
 	for j,dj in enumerate(d):
 		Bm[:,j] = beta_marcuse(n,dj,wl=wl,Nmodes=N, pol=pol, plot=False)			# Propagation constants of waveguide modes
-		Bo[j] = Bm[0,j]
+		Bo[j] = Bm[incident_mode,j]
 
 	p = np.tile(np.linspace(1e-15,p_max*k,p_res), (len(d),1))					# transverse wavevectors in air (independent variable for algorithm)
 	p = p.transpose()
@@ -295,25 +301,31 @@ def main():
 	Bm = np.nan_to_num(Bm)
 	Bo = np.nan_to_num(Bo)
 
+	repeat = True
+
 	for i in range(imax):
+
+		if repeat == False: break
 
 		print '\nComputing iteration %u of %u' % (i+1,imax)
 
 		# Qt
+
 		qr1 = np.tile(qr,(p_res,1,1))
 		integral = np.trapz(qr1 * (Bo-Bc1) * F, dx=dp, axis=1)
 		# integral = np.sum(qr1 * (Bo-Bc1) * F, axis=1) * dp
 
 		sigma = np.sum([(Bo-Bm[n]) * am[n] * G[n,:] for n in range(N)], axis=0)
 
-		qt = 1/(2*w*mu*P) * abs(Bc) / (Bo+Bc) * (2*Bo*G[0,:] + integral + sigma)
+		qt = 1/(2*w*mu*P) * abs(Bc) / (Bo+Bc) * (2*Bo*G[incident_mode,:] + integral + sigma)
 
 		# an
 		am_prev = am
 		am = np.array(
 			[ (1/(4*w*mu*P) * np.sum(qt * (Bm[n]-Bc) * G[n,:], axis=0) * dp) for n in range(N) ]
 			)
-		print 'Delta ao:', abs(am_prev-am)
+
+		
 
 
 		#Qr
@@ -324,17 +336,35 @@ def main():
 		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * integral
 
 		'''
-		Test Power Conservation
+		Test Convergence
 		'''
 
-		error = (1+am[0,:]) * (1-am[0,:].conjugate()) - np.sum(abs(am[1:,:])**2, axis=0) - np.sum((abs(qt)**2 + abs(qr)**2) * np.conjugate(Bc) / abs(Bc), axis=0) * dp
-		print 'Power Conservation: ', abs(error.real)
+		delta = abs(am_prev-am)
+		repeat = True if np.any(delta > convergence_threshold) else False
+		print 'Delta ao:', np.amax(delta)
 
-		'''
-		Test Gelin, eq. 14
-		'''
 
-		print 'Gelin Eq. 14: ', 1/(4*w*mu*P) * np.trapz(qt * (Bm[0]+Bc) * G[0,:], dx=dp, axis=0)
+	'''
+	Test Power Conservation
+	'''
+
+	error = (1+am[0,:]) * (1-am[0,:].conjugate()) - np.sum(abs(am[1:,:])**2, axis=0) - np.sum((abs(qt)**2 + abs(qr)**2) * np.conjugate(Bc) / abs(Bc), axis=0) * dp
+	err2  = 1 - np.sum(abs(am)**2, axis=0) - np.sum(abs(qt**2)*(p<=k) + abs(qr)**2*(p<=k), axis=0) * dp
+	print 'Error   in Power Conservation: ', abs(error.real)
+	print 'Error 2 in Power Conservation: ', abs(err2.real)
+	
+	# print ((1+am[0,:]) * (1-am[0,:].conjugate()))[0]
+	# print (np.sum(abs(am[1:,:])**2, axis=0))[0]
+	# print (np.sum((abs(qt)**2 + abs(qr)**2) * np.conjugate(Bc) / abs(Bc), axis=0) * dp)[0]
+	# print np.sum(abs(am)**2, axis=0)
+	# print np.sum(abs(qt**2)*(p<=k) + abs(qr)**2*(p<=k), axis=0) * dp
+	# exit()
+
+	'''
+	Test Gelin, eq. 14
+	'''
+
+	print 'Gelin Eq. 14: ', 1/(4*w*mu*P) * np.trapz(qt * (Bm[0]+Bc) * G[0,:], dx=dp, axis=0)
 
 	'''
 	Print Stats
@@ -349,24 +379,27 @@ def main():
 	'''
 
 	# Remove values for cutoff modes
-	print am
 	am[np.nonzero(nanMask)] = complex(np.nan, np.nan)
 	print am
 
-	fig, ax = plt.subplots(2,figsize=(7,5))
+	# scattering coefficients
 
-	ax[0].plot(p/k,qt.real,'r')
-	ax[0].plot(p/k,qt.imag,'r:')
-	ax[1].plot(p/k,qr.real,'b')
-	ax[1].plot(p/k,qr.imag,'b:')
+	# fig, ax = plt.subplots(2,figsize=(7,5))
 
-	ax[0].axhline(0,color='k',ls=':')
-	ax[1].axhline(0,color='k',ls=':')
+	# ax[0].plot(p/k,qt.real,'r')
+	# ax[0].plot(p/k,qt.imag,'r:')
+	# ax[1].plot(p/k,qr.real,'b')
+	# ax[1].plot(p/k,qr.imag,'b:')
+
+	# ax[0].axhline(0,color='k',ls=':')
+	# ax[1].axhline(0,color='k',ls=':')
 
 	# ax[0].set_xlim(0,10)
 	# ax[0].set_ylim(0,1.5)
 	# ax[1].set_xlim(0,10)
 	# ax[1].set_ylim(0,1.5)
+
+	# Reflection Magnitude and Phase
 
 	refFig, refAx = plt.subplots(2,figsize=(7,5))
 
@@ -375,26 +408,6 @@ def main():
 		refAx[1].plot(kd,np.angle(am[j,:]) / pi,color=colors[j],marker='o')
 	
 	refAx[0].set_ylim(0,1)
-
-	# fig2, ax2 = plt.subplots(1,figsize=(7,5))
-	# ax2.plot(p/k,Bc.real,'g')
-	# ax2.plot(p/k,Bc.imag,'g:')
-
-	# plt.figure()
-	# ext = putil.getExtent(p/k,p/k)
-	# plt.imshow(np.real(F), vmin=-1e14, vmax=1e14, extent = ext)
-	# plt.colorbar()
-
-	# plt.figure()
-	# ext = putil.getExtent(p/k,p/k)
-	# plt.imshow(abs(Bc2-Bc1), extent = ext)
-	# plt.colorbar()
-
-	# plt.figure()
-	# ext = putil.getExtent(p/k,p/k)
-	# plt.imshow(abs(qt1), extent = ext)
-	# plt.colorbar()
-
 
 	plt.show()
 
