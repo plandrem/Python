@@ -12,6 +12,8 @@ import sys
 import os
 import time
 
+import DielectricSlab as ds
+
 # import pudb; pu.db
 
 from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
@@ -54,43 +56,32 @@ def beta_marcuse(n,d,wl=1.,pol='TM',Nmodes=None,plot=False):
 	'''
 
 	k = 2*pi/wl
-
-	K = lambda b: sqrt((n*k)**2 - b**2)
-	g = lambda b: sqrt(b**2 - k**2)
-
+	kappa = np.linspace(0,n*k,10000)
+	gamma = lambda x: sqrt((n*k)**2 - x**2 - k**2)
+	
 	C = n**2 if pol == 'TM' else 1.
 
-	trans = lambda b: tan(K(b) * d) - C * np.real(g(b)/K(b))
+	trans = lambda K: tan(K * d) - C * np.real(gamma(K)/K)
 
 	# Find zero crossings, then use the brentq method to find the precise zero crossing 
 	# between the two nearest points in the array
 
-	b = np.linspace(0,n*k - (1e-15),10000)
+	diff = np.diff(np.sign(trans(kappa)))
 
-	# if type(d) not in [int, float] and len(d) > 1:
-	# 	d = d.reshape(len(d),1)
-	# 	b = np.tile(b,(len(d),1))
-
-	diff = np.diff(np.sign(trans(b)))
-
-	# plt.plot(b[0,:],trans(b)[0,:])
-	# plt.plot(b[0,:],np.sign(trans(b))[0,:])
-	# plt.ylim(-2,2)
-	# plt.show()
-	# exit()
-
-	Bs = np.array([])
+	Ks = np.array([])
 
 	toggle = True # need to accept alternating zero crossings - the true modes alternate with infinite discontinuites of the tangent function
-	for i,idx in enumerate(np.nonzero(diff)[0][::-1]):
+	for i,idx in enumerate(np.nonzero(diff)[0]):
 
 		if toggle:
-			b_low = b[idx-1]
-			b_high = b[idx+1]
+			k_low = kappa[idx-1]
+			k_high = kappa[idx+1]
 
-			Bs = np.append(Bs, sp.optimize.brentq(trans,b_low,b_high))
+			Ks = np.append(Ks, sp.optimize.brentq(trans,k_low,k_high))
 
 		toggle = not toggle
+
+	Bs = sqrt((n*k)**2 - Ks**2)
 
 	# Truncate or pad output as necessary
 	if len(Bs) < Nmodes:
@@ -103,12 +94,14 @@ def beta_marcuse(n,d,wl=1.,pol='TM',Nmodes=None,plot=False):
 	# Plots for debugging
 	if plot:
 		print 'Number of modes:', Nmodes
-		print Bs*d
 
-		plt.plot(b*d,tan(K(b)*d),'r')
-		plt.plot(b*d,C * np.real(g(b)/K(b)),'b')
-		plt.plot(b*d,trans(b),'g', lw=2)
-		plt.plot(b*d,np.sign(trans(b)),'m:')
+		plt.figure()
+		plt.plot(kappa*d/pi, tan(kappa*d))
+		plt.plot(kappa*d/pi, sqrt(n**2*k**2 - kappa**2 - k**2)/kappa)
+		plt.plot(kappa*d/pi, trans(kappa))
+		plt.plot(kappa*d/pi, np.sign(trans(kappa)), 'k:')
+
+		plt.xlabel(r'$\kappa d/\pi$')
 		plt.axhline(0, c='k')
 		plt.ylim(-10,10)
 		plt.show()
@@ -208,12 +201,17 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	Ns = numModes(n,1,kd)
 	N = np.amax(Ns)
 	print 'Number of Modes Detected:', N
+
+	# dd = d*n/wl
+	# print Ns
+	# print ds.numModes(n,1,dd)
+	# exit()
 	
 	Bo = np.zeros(len(d))
 	Bm = np.zeros((np.amax(N),len(d)))
 
 	for j,dj in enumerate(d):
-		Bm[:,j] = beta_marcuse(n,dj,wl=wl,Nmodes=N, pol=pol, plot=False)			# Propagation constants of waveguide modes
+		Bm[:,j] = beta_marcuse(n,dj,wl=wl,Nmodes=N, pol=pol, plot=True)			# Propagation constants of waveguide modes
 		Bo[j] = Bm[incident_mode,j]
 
 	p = np.tile(np.linspace(1e-15,p_max*k,p_res), (len(d),1))					# transverse wavevectors in air (independent variable for algorithm)
@@ -437,14 +435,20 @@ def main():
 	# Define Key Simulation Parameters
 
 	n = sqrt(20)
-	# kd = np.array([1.0])
+	kd = np.array([1.0])
 	# kd = np.array([1.375]) # Diverges?!
 	# kd = np.array([0.209,0.418,0.628,0.837,1.04,1.25])
-	kds = np.linspace(1e-9,1.5,5)
+	# kds = np.linspace(1e-9,2.4,50)
+	# kd = np.linspace(1e-9,2.4,50)
 
-	ams = putil.stackPoints([Reflection(kd,n,p_res=1e2) for kd in kds])
+	Reflection(kd,n,p_res=5e2)
+	exit()
 
-	plt.plot(kds, ams.transpose())
+	ams = putil.stackPoints([Reflection(kd,n,p_res=5e2) for kd in kds])
+
+	fig, ax = plt.subplots(2,figsize=(7,5))
+	[ax[0].plot(kds, abs(am)     , color=colors[i]) for i,am in enumerate(ams)]
+	[ax[1].plot(kds, np.angle(am), color=colors[i]) for i,am in enumerate(ams)]
 	plt.show()
 
 
@@ -453,6 +457,6 @@ def main():
 
 if __name__ == '__main__':
   # test_beta()
-  # test_beta_marcuse()
-  main()
+  test_beta_marcuse()
+  # main()
   # test_stackPoints()

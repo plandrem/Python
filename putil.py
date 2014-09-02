@@ -482,11 +482,11 @@ def stackPoints(arrays):
 	for a in arrays:
 		if len(a) > N: N = len(a)
 
-	result = np.zeros((N,len(arrays)))
+	result = np.zeros((N,len(arrays)), dtype=complex)
 
 	# Pad arrays and append to output
 	for i,a in enumerate(arrays):
-		pad = np.ones(N - len(a)) * np.nan
+		pad = np.ones(N - len(a)) * complex(np.nan,np.nan)
 		result[:,i] = np.append(a,pad)
 
 	return result
@@ -498,7 +498,8 @@ def test_stackPoints():
 
 	print stackPoints([a,b])
 	print stackPoints([a,b])[0]
+	print stackPoints([a,b]).shape
 
 
 if __name__ == '__main__':
-	example_getEps_GST()
+	test_stackPoints()
