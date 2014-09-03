@@ -12,8 +12,6 @@ import sys
 import os
 import time
 
-import DielectricSlab as ds
-
 # import pudb; pu.db
 
 from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
@@ -202,6 +200,11 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	N = np.amax(Ns)
 	print 'Number of Modes Detected:', N
 
+	# confirm source mode is supported by slab (ie is above cutoff)
+	if incident_mode+1 > N:
+		print 'Source Mode below cutoff.'
+		return np.nan * np.ones(N)
+
 	# dd = d*n/wl
 	# print Ns
 	# print ds.numModes(n,1,dd)
@@ -211,7 +214,7 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	Bm = np.zeros((np.amax(N),len(d)))
 
 	for j,dj in enumerate(d):
-		Bm[:,j] = beta_marcuse(n,dj,wl=wl,Nmodes=N, pol=pol, plot=True)			# Propagation constants of waveguide modes
+		Bm[:,j] = beta_marcuse(n,dj,wl=wl,Nmodes=N, pol=pol, plot=False)			# Propagation constants of waveguide modes
 		Bo[j] = Bm[incident_mode,j]
 
 	p = np.tile(np.linspace(1e-15,p_max*k,p_res), (len(d),1))					# transverse wavevectors in air (independent variable for algorithm)
@@ -365,18 +368,12 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	print 'Error   in Power Conservation: ', abs(error.real)
 	print 'Error 2 in Power Conservation: ', abs(err2.real)
 	
-	# print ((1+am[0,:]) * (1-am[0,:].conjugate()))[0]
-	# print (np.sum(abs(am[1:,:])**2, axis=0))[0]
-	# print (np.sum((abs(qt)**2 + abs(qr)**2) * np.conjugate(Bc) / abs(Bc), axis=0) * dp)[0]
-	# print np.sum(abs(am)**2, axis=0)
-	# print np.sum(abs(qt**2)*(p<=k) + abs(qr)**2*(p<=k), axis=0) * dp
-	# exit()
 
 	'''
 	Test Gelin, eq. 14
 	'''
 
-	print 'Gelin Eq. 14: ', 1/(4*w*mu*P) * np.trapz(qt * (Bm[0]+Bc) * G[0,:], dx=dp, axis=0)
+	print 'Gelin Eq. 14: ', 1/(4*w*mu*P) * np.trapz(qt * (Bm[incident_mode]+Bc) * G[incident_mode,:], dx=dp, axis=0)
 
 	'''
 	Print Stats
@@ -435,16 +432,16 @@ def main():
 	# Define Key Simulation Parameters
 
 	n = sqrt(20)
-	kd = np.array([1.0])
+	# kd = np.array([1.0])
 	# kd = np.array([1.375]) # Diverges?!
 	# kd = np.array([0.209,0.418,0.628,0.837,1.04,1.25])
-	# kds = np.linspace(1e-9,2.4,50)
-	# kd = np.linspace(1e-9,2.4,50)
+	kds = np.linspace(1e-9,2.4,50)
+	kds = np.linspace(0.5,1.5,50)
 
-	Reflection(kd,n,p_res=5e2)
-	exit()
+	res = 1e3
+	incident_mode = 1
 
-	ams = putil.stackPoints([Reflection(kd,n,p_res=5e2) for kd in kds])
+	ams = putil.stackPoints([Reflection(kd,n,incident_mode=incident_mode,p_res=res) for kd in kds])
 
 	fig, ax = plt.subplots(2,figsize=(7,5))
 	[ax[0].plot(kds, abs(am)     , color=colors[i]) for i,am in enumerate(ams)]
@@ -457,6 +454,6 @@ def main():
 
 if __name__ == '__main__':
   # test_beta()
-  test_beta_marcuse()
-  # main()
+  # test_beta_marcuse()
+  main()
   # test_stackPoints()
