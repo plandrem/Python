@@ -21,7 +21,12 @@ np.set_printoptions(linewidth=150, precision=8)
 pi = sp.pi
 sqrt = sp.emath.sqrt
 mu = 4*pi * 1e-7
+eo = 8.85e-12
 c  = 299792458
+
+# mu = 1.
+eo = 1.
+# c  = 1.
 
 # units
 cm = 1e-2
@@ -240,30 +245,37 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	# Mode Amplitude Coefficients
 	P = 1
 
-	Am = sqrt(2*w*mu*P / (Bm*d + Bm/gm))
+	if pol == 'TE':	
 
-	Bt = sqrt(2*w*mu*P / (pi*abs(Bc))) 
-	Br = sqrt(2*p**2*w*mu*P / (pi*abs(Bc)*(p**2*cos(o*d)**2 + o**2*sin(o*d)**2)))
-	
-	Dr = 1/2. * exp(-1j*p*d) * (cos(o*d) + 1j*o/p * sin(o*d))
+		Am = sqrt(2*w*mu*P / (Bm*d + Bm/gm))
 
-	# plt.plot(p/k,Bt,'r')
-	# plt.plot(p/k,Br.real,'b')
-	# plt.show()
-	# print Am
-	# exit()
+		Bt = sqrt(2*w*mu*P / (pi*abs(Bc))) 
+		Br = sqrt(2*p**2*w*mu*P / (pi*abs(Bc)*(p**2*cos(o*d)**2 + o**2*sin(o*d)**2)))
+		
+		Dr = 1/2. * exp(-1j*p*d) * (cos(o*d) + 1j*o/p * sin(o*d))
 
+	else:
 
+		Am = sqrt(gm/Bm * 2*w*eo*n**2*P / ( n**2*k**2/(Bm**2 + n**2*gm**2) + gm*d))
 
+		Bt = sqrt(2*w*eo*P / (pi*abs(Bc))) 
+		Br = sqrt(2*p**2*w*eo*P*n**2 / (pi*abs(Bc)*(n**2 * p**2 * cos(o*d)**2 + o**2/n**2 * sin(o*d)**2)))
+
+		Dr = 1/2. * exp(-1j*p*d) * (cos(o*d) + 1j*o/(n**2 * p) * sin(o*d))
 
 
 
 	# Overlap Integral Solutions, Gm(p) and F(p',p) = F(p1,p2)
 
 	G = np.zeros((N,p_res,Nds),dtype = 'complex')
+	V = np.zeros((N,p_res,Nds),dtype = 'complex')
 
 	for i in range(N):
 		G[i,:,:] = 2 * k**2 * (eps-1) * Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d) - p*sin(p*d)) / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
+
+		if pol == 'TM':
+			V[i,:,:] = Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d)*(gm[i]**2 + Km[i]**2) - p*sin(p*d)*((gm[i]**2 + p**2)/n**2 + Km[i]**2 - p**2)) \
+								 / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
 
 
 	# Convert to multi-dimensional arrays to work with functions of p',p. When transposing, 
@@ -293,8 +305,19 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 
 	# Gelin's definition of F, with the sin arguments corrected:
 	I = np.tile(np.eye(p_res), (Nds,1,1)).transpose(1,2,0)
-	F = I * Bt2 * Br1 * (D1 + Dstar) - \
+	F = I * pi * Bt2 * Br1 * (D1 + Dstar) - \
 			np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I)
+
+	if pol == 'TM':
+		f = Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(n**2 * (o1**2-p2**2)) + \
+										 2*(D1 * (exp(1j*p1*d) * (p2*sin(pd)+1j*p1*cos(pd))) - 1j*p1 ).real / (p1**2-p2**2) )
+		
+		# Handle Cauchy singularities
+		cauchy = pi * Bt2 * Br1 * (D1 + Dstar)
+		idx = np.where(1 - np.isfinite(f))
+		# f[idx] = 0
+		f[idx] = cauchy[idx]
+
 
 
 
@@ -311,8 +334,13 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	# Remove nan instances for iteration purposes
 	nanMask = np.isnan(Bm)
 	G = np.nan_to_num(G)
+	V = np.nan_to_num(V)
 	Bm = np.nan_to_num(Bm)
 	Bo = np.nan_to_num(Bo)
+
+	if pol == 'TM':
+		vm = V[incident_mode]
+		Gm = G[incident_mode]
 
 	repeat = True; converged = False
 
@@ -324,31 +352,56 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 
 		print '\nComputing iteration %u of %u' % (i+1,imax)
 
-		# Qt
 
-		qr1 = np.tile(qr,(p_res,1,1))
-		integral = np.trapz(qr1 * (Bo-Bc1) * F, dx=dp, axis=1)
-		# integral = np.sum(qr1 * (Bo-Bc1) * F, axis=1) * dp
+		if pol == 'TE':
 
-		sigma = np.sum([(Bo-Bm[n]) * am[n] * G[n,:] for n in range(N)], axis=0)
+			# Qt
 
-		qt = 1/(2*w*mu*P) * abs(Bc) / (Bo+Bc) * (2*Bo*G[incident_mode,:] + integral + sigma)
+			qr1 = np.tile(qr,(p_res,1,1))
+			integral = np.trapz(qr1 * (Bo-Bc1) * F, dx=dp, axis=1)
+			# integral = np.sum(qr1 * (Bo-Bc1) * F, axis=1) * dp
 
-		# an
-		am_prev = am
-		am = np.array(
-			[ (1/(4*w*mu*P) * np.sum(qt * (Bm[n]-Bc) * G[n,:], axis=0) * dp) for n in range(N) ]
-			)
+			sigma = np.sum([(Bo-Bm[n]) * am[n] * G[n,:] for n in range(N)], axis=0)
 
-		
+			qt = 1/(2*w*mu*P) * abs(Bc) / (Bo+Bc) * (2*Bo*G[incident_mode,:] + integral + sigma)
+
+			# an
+			am_prev = am
+			am = np.array(
+				[ (1/(4*w*mu*P) * np.sum(qt * (Bm[n]-Bc) * G[n,:], axis=0) * dp) for n in range(N) ]
+				)
+
+			#Qr
+			qt1 = np.tile(qt,(p_res,1,1))
+			integral = np.trapz(qt1 * (Bc2-Bc1) * F.transpose(1,0,2), dx=dp, axis=1)
+			# integral = np.sum(qt1 * (Bc2-Bc1) * F.transpose(), axis=1) * dp
+			
+			qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * integral
 
 
-		#Qr
-		qt1 = np.tile(qt,(p_res,1,1))
-		integral = np.trapz(qt1 * (Bc2-Bc1) * F.transpose(1,0,2), dx=dp, axis=1)
-		# integral = np.sum(qt1 * (Bc2-Bc1) * F.transpose(), axis=1) * dp
-		
-		qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * integral
+
+
+		else: #TM
+
+			qr1 = np.tile(qr,(p_res,1,1))
+			integral = np.trapz(qr1 * (Bc1*Gm*f - Bo*vm*F), dx=dp, axis=1)
+
+			sigma = np.sum([(Bm[n]*V[n]*Gm - Bo*vm*G[n]) * am[n] for n in range(N)], axis=0)
+
+			qt = 1/(2*w*eo*P) * abs(Bc) / (Bo*vm+Bc*Gm/2.) * (2*Bo*vm*Gm + integral + sigma)
+
+			# an
+			am_prev = am
+			am = np.array(
+				[ (1/(2*w*eo*P) * np.trapz(qt * (Bc*G[n]/2.-Bm[n]*V[n]), dx=dp, axis=0)) for n in range(N) ]
+				)
+
+			#Qr
+			qt1 = np.tile(qt,(p_res,1,1))
+			integral = np.trapz(qt1 * (Bc1 * F.transpose(1,0,2)/2. - Bc2 * f.transpose(1,0,2)), dx=dp, axis=1)
+			
+			qr = 1/(2*w*eo*P) * (abs(Bc)/Bc) * integral
+
 
 		'''
 		Test Convergence
@@ -432,16 +485,18 @@ def main():
 	# Define Key Simulation Parameters
 
 	n = sqrt(20)
-	# kd = np.array([1.0])
+	kds = np.array([.5])
 	# kd = np.array([1.375]) # Diverges?!
 	# kd = np.array([0.209,0.418,0.628,0.837,1.04,1.25])
-	kds = np.linspace(1e-9,2.4,50)
-	kds = np.linspace(0.5,1.5,50)
+	# kds = np.linspace(1e-9,2.4,50)
+	# kds = np.linspace(0.5,1.5,50)
 
-	res = 1e3
-	incident_mode = 1
+	res = 0.5e3
+	incident_mode = 0
+	# pol='TE'
+	pol='TM'
 
-	ams = putil.stackPoints([Reflection(kd,n,incident_mode=incident_mode,p_res=res) for kd in kds])
+	ams = putil.stackPoints([Reflection(kd,n,pol=pol,incident_mode=incident_mode,p_res=res) for kd in kds])
 
 	fig, ax = plt.subplots(2,figsize=(7,5))
 	[ax[0].plot(kds, abs(am)     , color=colors[i]) for i,am in enumerate(ams)]
