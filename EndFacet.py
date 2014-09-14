@@ -20,13 +20,13 @@ np.set_printoptions(linewidth=150, precision=8)
 
 pi = sp.pi
 sqrt = sp.emath.sqrt
-mu = 4*pi * 1e-7
-eo = 8.85e-12
-c  = 299792458
+# mu = 4*pi * 1e-7
+# eo = 8.85e-12
+# c  = 299792458
 
-# mu = 1.
-# eo = 1.
-# c  = 1.
+mu = 1.
+eo = 1.
+c  = 1.
 
 # units
 cm = 1e-2
@@ -139,7 +139,7 @@ def test_beta_marcuse():
 def numModes(ncore,nclad,kd):
 	return np.ceil(sqrt(ncore**2 - nclad**2)*kd/pi).astype(int)
 
-def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,convergence_threshold=1e-5,debug=False):
+def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,convergence_threshold=1e-5,first_order=False, debug=False):
 	'''
 
 	Solve for amplitudes of all scattered modes resulting from a guided mode incident on the 
@@ -160,6 +160,8 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	imax  [int] - maximum number of iterations allowed while testing for convergence
 	convergence_threshold [float] - the convergence routine will run until the magnitude of the reflection coefficients drop
 		below this value
+
+	first_order [boolean] - if True, don't iterate and simply return the initial solution.
 
 	OUTPUTS
 
@@ -208,7 +210,6 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	# wavevectors
 
 	Ns = numModes(n,1,kd)
-	# N = 1
 	N = np.amax(Ns)
 	print 'Number of Modes Detected:', N
 
@@ -218,17 +219,27 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 		return np.nan * np.ones(N)
 	
 	Bo = np.zeros(len(d))
-	# Bm = np.ones((np.amax(N),len(d)))
 	Bm = np.zeros((np.amax(N),len(d)))
 
 	for j,dj in enumerate(d):
 		Bm[:,j] = beta_marcuse(n,dj,wl=wl,Nmodes=N, pol=pol, plot=False)			# Propagation constants of waveguide modes
 		Bo[j] = Bm[incident_mode,j]
 
-	p = np.hstack((np.linspace(1e-15,2*k,p_res),np.linspace(2*k + p_max*k/p_res, p_max*k, p_res)))
+	gm  = sqrt(      -k**2 + Bm**2)						# transverse wavevectors in air for guided modes
+	Km  = sqrt(n**2 * k**2 - Bm**2)						# transverse wavevectors in high-index region for guided modes
 
+	# create an array of wavevectors, p, with two zones of resolution - one below nk where 
+	# there are singular features in the overlap integrals, and one above where there are 
+	# no high-frequency features
+
+	p_split = np.amax((2*np.amax(Km), 2))
+
+	p = np.hstack((np.linspace(1e-15,p_split*k,p_res),np.linspace(p_split*k + (p_max-p_split)*k/p_res, p_max*k, p_res)))
 	p = np.tile(p, (len(d),1))					# transverse wavevectors in air (independent variable for algorithm)
+	
+	# # Old array creation with single zone.
 	# p = np.tile(np.linspace(1e-15,p_max*k,p_res), (len(d),1))					# transverse wavevectors in air (independent variable for algorithm)
+
 	p = p.transpose()
 
 	dp = p[1,0]-p[0,0]
@@ -236,13 +247,10 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	Bc = sqrt(       k**2 - p**2) 						# propagation constants in air for continuum modes
 	o  = sqrt(n**2 * k**2 - Bc**2)						# transverse wavevectors in high-index region for continuum modes
 	
-	gm  = sqrt(      -k**2 + Bm**2)						# transverse wavevectors in air for guided modes
-	Km  = sqrt(n**2 * k**2 - Bm**2)						# transverse wavevectors in high-index region for guided modes
-
-	Bc = Bc.real - 1j*Bc.imag
-	o =  o.real  - 1j*o.imag
-	gm = gm.real - 1j*gm.imag
-	Km = Km.real - 1j*Km.imag
+	# Bc = Bc.real - 1j*Bc.imag
+	# o =  o.real  - 1j*o.imag
+	# gm = gm.real - 1j*gm.imag
+	# Km = Km.real - 1j*Km.imag
 
 
 
@@ -262,12 +270,19 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 
 	else:
 
-		Am = sqrt(gm/Bm * 2*w*eo*n**2*P / ( n**2 * k**2/(Bm**2 + n**2*gm**2) + gm*d))
+		# Marcuse solution - haven't figured out algebra yet but matches exact solution
+		# Am = sqrt(gm/Bm * 2*w*eo*n**2*P / ( n**2 * k**2/(Bm**2 + n**2*gm**2) + gm*d))
+
+		psi = (2*Km*d + sin(2*Km*d))/(4*Km*eps) + cos(Km*d)**2/(2*gm)
+		Am = sqrt(w*eo*P/(Bm*psi))
 
 		Bt = sqrt(2*w*eo*P / (pi*abs(Bc))) 
 		Br = sqrt(2*p**2*w*eo*P*n**2 / (pi*abs(Bc)*(n**2 * p**2 * cos(o*d)**2 + o**2/n**2 * sin(o*d)**2)))
+		
+		# Formula with Gelin's "Typo"
+		# Br = p * sqrt(2*w*eo*P*eps / (pi*abs(Bc)*(eps**2 * p**2 * cos(o*d)**2 + o**2 * sin(o*d)**2)))
 
-		Dr = 1/2. * exp(-1j*p*d) * (cos(o*d) + 1j*o/(n**2 * p) * sin(o*d))
+		Dr = 1/2. * exp(1j*p*d) * (cos(o*d) - 1j*o/(n**2 * p) * sin(o*d))
 
 	# Plot Amplitudes
 	if debug:
@@ -281,12 +296,14 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 
 	# Overlap Integral Solutions, Gm(p) and F(p',p) = F(p1,p2)
 
-	G = np.zeros((N,len(p),Nds),dtype = 'complex')
-	V = np.zeros((N,len(p),Nds),dtype = 'complex')
-	kp = np.zeros((N,len(p),Nds),dtype = 'complex')
+	if TM:
+		V  = np.zeros((N,len(p),Nds),dtype = 'complex')
+		kp = np.zeros((N,len(p),Nds),dtype = 'complex')
+	else:
+		G = np.zeros((N,len(p),Nds),dtype = 'complex')
+
 
 	for i in range(N):
-		G[i,:,:] = 2 * k**2 * (eps-1) * Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d) - p*sin(p*d)) / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
 
 		if pol == 'TM':
 			# V[i,:,:] = Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d)*(gm[i]**2 + Km[i]**2) - p*sin(p*d)*((gm[i]**2 + p**2) + Km[i]**2 - p**2)) \
@@ -297,8 +314,11 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 			V[i,:,:]  = Am[i] * Bt * cos(Km[i]*d) * ((Km[i]*sin(p*d) - p*cos(p*d)*tan(Km[i]*d))/(eps*(Km[i]**2 - p**2)) \
 				           - (p*sin(p*d) - gm[i]*cos(p*d))/(gm[i]**2 + p**2))
 
-			kp[i,:,:] = Am[i] * Bt * cos(Km[i]*d) * ((Km[i]*sin(p*d) - p*cos(p*d)*tan(Km[i]*d))/(Km[i]**2 - p**2) \
+			kp[i,:,:] = Am[i] * Bt * cos(Km[i]*d) * ((Km[i]*sin(p*d) - p*cos(p*d)*tan(Km[i]*d))/(     Km[i]**2 - p**2)  \
 				           - (p*sin(p*d) - gm[i]*cos(p*d))/(gm[i]**2 + p**2))
+
+		else:
+			G[i,:,:] = 2 * k**2 * (eps-1) * Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d) - p*sin(p*d)) / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
 
 
 	# Convert to multi-dimensional arrays to work with functions of p',p. When transposing, 
@@ -326,17 +346,13 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	# F[idx] = 0
 	# # F[idx] = cauchy[idx]
 
-	# Gelin's definition of F, with the sin arguments corrected:
-	I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
-	F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
-			np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I)
 
 	if pol == 'TM':
 		f = Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(n**2 * (o1**2-p2**2)) + \
-										 2*(D1 * (exp(1j*p1*d) * (p2*sin(pd)+1j*p1*cos(pd))) - 1j*p1 ).real / (p1**2-p2**2) )
+										 2*(D1 * (exp(-1j*p1*d) * (p2*sin(pd)-1j*p1*cos(pd))) + 1j*p1 ).real / (p1**2-p2**2) )
 
 		z = Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/        (o1**2-p2**2)  + \
-										 2*(D1 * (exp(1j*p1*d) * (p2*sin(pd)+1j*p1*cos(pd))) - 1j*p1 ).real / (p1**2-p2**2) )
+										 2*(D1 * (exp(-1j*p1*d) * (p2*sin(pd)-1j*p1*cos(pd))) + 1j*p1 ).real / (p1**2-p2**2) )
 
 
 		# Handle Cauchy singularities
@@ -347,6 +363,16 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 
 		idx = np.where(1 - np.isfinite(z))
 		z[idx] = 0
+		# z[idx] = cauchy[idx]
+
+
+	else:
+
+		# Gelin's definition of F, with the sin arguments corrected:
+		I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
+		F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
+				np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I)
+
 		
 
 	if debug:
@@ -356,14 +382,26 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 		if TM: 
 			plt.plot(p/k,kp[0],'g')
 			plt.plot(p/k,V[0],'m')
-
-		print p[100]
-
-		# plt.figure()
-		# plt.plot(p/k,F[:,100,0],'c')
-		if TM: 
 			plt.plot(p/k,f[:,100,0],'y')
 			plt.plot(p/k,z[:,100,0],'c')
+
+			# plt.figure()
+			# plt.plot(p/k)
+
+			plt.figure()
+			plt.imshow(z[:,:,0].real, extent = putil.getExtent(p/k,p/k), vmin=-1, vmax=1)
+			plt.colorbar()
+
+			plt.figure()
+			plt.imshow(f[:,:,0].real, extent = putil.getExtent(p/k,p/k), vmin=-1, vmax=1)
+			plt.colorbar()
+
+		else:
+			plt.figure()
+			plt.imshow(F[:,:,0].real, extent = putil.getExtent(p/k,p/k), vmin=-1, vmax=1)
+			plt.colorbar()
+
+
 
 		plt.show()
 		exit()
@@ -385,14 +423,17 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 
 	# Remove nan instances for iteration purposes
 	nanMask = np.isnan(Bm)
-	G = np.nan_to_num(G)
-	V = np.nan_to_num(V)
+
 	Bm = np.nan_to_num(Bm)
 	Bo = np.nan_to_num(Bo)
+	
+	if TM:
+		V = np.nan_to_num(V)
+	else:
+		G = np.nan_to_num(G)
 
-	if pol == 'TM':
+	if TM:
 		vm = V[incident_mode]
-		Gm = G[incident_mode]
 		kpm = kp[incident_mode]
 
 	repeat = True; converged = False
@@ -412,7 +453,8 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 			# Qt
 
 			qr1 = np.tile(qr,(len(p),1,1))
-			integral = np.trapz(qr1 * (Bo-Bc1) * F, dx=dp, axis=1)
+
+			integral = np.trapz(qr1 * (Bo-Bc1) * F, x=p1, axis=1)
 			# integral = np.sum(qr1 * (Bo-Bc1) * F, axis=1) * dp
 
 			sigma = np.sum([(Bo-Bm[n]) * am[n] * G[n,:] for n in range(N)], axis=0)
@@ -421,14 +463,13 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 
 			# an
 			am_prev = am
-			am = np.array(
-				[ (1/(4*w*mu*P) * np.sum(qt * (Bm[n]-Bc) * G[n,:], axis=0) * dp) for n in range(N) ]
-				)
+			# am = np.array([ (1/(4*w*mu*P) * np.sum(qt * (Bm[n]-Bc) * G[n,:], axis=0) * dp) for n in range(N) ])
+			am = np.array([ (1/(4*w*mu*P) * np.trapz(qt * (Bm[n]-Bc) * G[n,:], x=p, axis=0)) for n in range(N) ])
 
 			#Qr
 			qt1 = np.tile(qt,(len(p),1,1))
-			integral = np.trapz(qt1 * (Bc2-Bc1) * F.transpose(1,0,2), dx=dp, axis=1)
-			# integral = np.sum(qt1 * (Bc2-Bc1) * F.transpose(), axis=1) * dp
+			integral = np.trapz(qt1 * (Bc2-Bc1) * F.transpose(1,0,2), x=p1, axis=1)
+			# integral = np.sum(qt1 * (Bc2-Bc1) * F.transpose(1,0,2), axis=1) * dp
 			
 			qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * integral
 
@@ -438,7 +479,7 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 		else: #TM
 
 			qr1 = np.tile(qr,(len(p),1,1))
-			integral = np.trapz(qr1 * (Bo*vm*z - Bc1*kpm*f), dx=dp, axis=1)
+			integral = np.trapz(qr1 * (Bo*vm*z - Bc1*kpm*f), x=p1, axis=1)
 
 			sigma = np.sum([(Bo*vm*kp[n] - Bm[n]*V[n]*kpm) * am[n] for n in range(N)], axis=0)
 
@@ -446,13 +487,11 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 
 			# an
 			am_prev = am
-			am = np.array(
-				[ (1/(2*w*eo*P) * np.trapz(qt * (Bm[n]*V[n] - Bc*kp[n]), dx=dp, axis=0)) for n in range(N) ]
-				)
+			am = np.array([ (1/(2*w*eo*P) * np.trapz(qt * (Bm[n]*V[n] - Bc*kp[n]), x=p, axis=0)) for n in range(N) ])
 
 			#Qr
 			qt1 = np.tile(qt,(len(p),1,1))
-			integral = np.trapz(qt1 * (Bc2 * f.transpose(1,0,2) - Bc1 * z.transpose(1,0,2)), dx=dp, axis=1)
+			integral = np.trapz(qt1 * (Bc2 * f.transpose(1,0,2) - Bc1 * z.transpose(1,0,2)), x=p1, axis=1)
 			
 			qr = 1/(2*w*eo*P) * (abs(Bc)/Bc) * integral
 
@@ -460,6 +499,10 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 		'''
 		Test Convergence
 		'''
+
+		if first_order:
+			converged = True
+			break
 
 		delta = abs(am_prev-am)
 		repeat = True if np.any(delta > convergence_threshold) else False
@@ -488,7 +531,10 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	Test Gelin, eq. 14
 	'''
 
-	print 'Gelin Eq. 14: ', 1/(4*w*mu*P) * np.trapz(qt * (Bm[incident_mode]+Bc) * G[incident_mode,:], dx=dp, axis=0)
+	if TM:
+		pass
+	else:
+		print 'Gelin Eq. 14: ', 1/(4*w*mu*P) * np.trapz(qt * (Bm[incident_mode]+Bc) * G[incident_mode,:], dx=dp, axis=0)
 
 	'''
 	Print Stats
@@ -550,19 +596,20 @@ def main():
 
 	# Define Key Simulation Parameters
 
-	# n = sqrt(1)
 	n = sqrt(20)
-	# kds = np.array([0.25])
-	# kd = np.array([1.375]) # Diverges?!
-	kds = np.array([0.209,0.418,0.628,0.837,1.04,1.25]) # TE Reference values
-	# kds = np.array([0.314,0.418,0.628,0.837,1.04,1.25]) # TM Reference Values
+	
+	# kds = np.array([0.837])
+	
+	# kds = np.array([0.209,0.418,0.628,0.837,1.04,1.25]) # TE Reference values
+	kds = np.array([0.314,0.418,0.628,0.837,1.04,1.25]) # TM Reference Values
+
 	# kds = np.linspace(1e-9,2.4,50)
 	# kds = np.linspace(0.1,0.5,50)
 	# kds = np.linspace(0.5,1.5,50)
 
-	res = 0.5e3
+	res = 1e3
 	incident_mode = 0
-	pol='TE'
+	pol='TM'
 
 	imax = 100
 	p_max = 100
@@ -574,6 +621,7 @@ def main():
 			p_res=res,
 			imax=imax,
 			p_max=p_max,
+			first_order = True,
 			debug=False
 			) for kd in kds])
 
