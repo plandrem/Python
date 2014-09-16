@@ -6,6 +6,7 @@ import numpy as np
 import scipy as sp
 import matplotlib as mpl
 from matplotlib import pyplot as plt
+import matplotlib as mpl
 
 import putil
 import sys
@@ -17,6 +18,10 @@ import time
 from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
 
 np.set_printoptions(linewidth=150, precision=8)
+
+# plt.rcParams['backend'] = 'TkAgg'
+# mpl.use('MacOSX')
+# plt.rcParams['interactive'] = True
 
 pi = sp.pi
 sqrt = sp.emath.sqrt
@@ -266,7 +271,7 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 		Bt = sqrt(2*w*mu*P / (pi*abs(Bc))) 
 		Br = sqrt(2*p**2*w*mu*P / (pi*abs(Bc)*(p**2*cos(o*d)**2 + o**2*sin(o*d)**2)))
 		
-		Dr = 1/2. * exp(-1j*p*d) * (cos(o*d) + 1j*o/p * sin(o*d))
+		Dr = 1/2. * exp(1j*p*d) * (cos(o*d) - 1j*o/p * sin(o*d))
 
 	else:
 
@@ -277,10 +282,10 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 		Am = sqrt(w*eo*P/(Bm*psi))
 
 		Bt = sqrt(2*w*eo*P / (pi*abs(Bc))) 
-		Br = sqrt(2*p**2*w*eo*P*n**2 / (pi*abs(Bc)*(n**2 * p**2 * cos(o*d)**2 + o**2/n**2 * sin(o*d)**2)))
+		# Br = sqrt(2*p**2*w*eo*P*n**2 / (pi*abs(Bc)*(n**2 * p**2 * cos(o*d)**2 + o**2/n**2 * sin(o*d)**2)))
 		
 		# Formula with Gelin's "Typo"
-		# Br = p * sqrt(2*w*eo*P*eps / (pi*abs(Bc)*(eps**2 * p**2 * cos(o*d)**2 + o**2 * sin(o*d)**2)))
+		Br = p * sqrt(2*w*eo*P*eps / (pi*abs(Bc)*(eps**2 * p**2 * cos(o*d)**2 + o**2 * sin(o*d)**2)))
 
 		Dr = 1/2. * exp(1j*p*d) * (cos(o*d) - 1j*o/(n**2 * p) * sin(o*d))
 
@@ -338,7 +343,7 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	# This method for F is based on a more direct solution of the field overlap integral, with less
 	# subsequent algebra:
 	# F = 2*Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
-	# 								 2*(D1 * (exp(1j*p1*d) * (p2*sin(pd)+1j*p1*cos(pd))) - 1j*p1 ).real / (p1**2-p2**2) )
+	# 								 2*(D1 * (exp(-1j*p1*d) * (p2*sin(pd)-1j*p1*cos(pd))) + 1j*p1 ).real / (p1**2-p2**2) )
 	
 	# # # Handle Cauchy singularities
 	# cauchy = pi * Bt2 * Br1 * (D1 + Dstar)
@@ -368,11 +373,21 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 
 	else:
 
-		# Gelin's definition of F, with the sin arguments corrected:
-		I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
-		F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
-				np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I)
+		# # Gelin's definition of F, with the sin arguments corrected:
+		# I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
+		# F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
+		# 		np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I)
 
+		# This method for F is based on a more direct solution of the field overlap integral, with less
+		# subsequent algebra:
+		F = 2*Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
+	 								 2*(D1 * (exp(-1j*p1*d) * (p2*sin(pd)-1j*p1*cos(pd))) + 1j*p1 ).real / (p1**2-p2**2) )
+	
+		# # Handle Cauchy singularities
+		cauchy = pi * Bt2 * Br1 * (D1 + Dstar)
+		idx = np.where(1 - np.isfinite(F))
+		F[idx] = 0
+		# F[idx] = cauchy[idx]
 		
 
 	if debug:
@@ -601,37 +616,67 @@ def main():
 	# kds = np.array([0.837])
 	
 	# kds = np.array([0.209,0.418,0.628,0.837,1.04,1.25]) # TE Reference values
-	kds = np.array([0.314,0.418,0.628,0.837,1.04,1.25]) # TM Reference Values
+	# kds = np.array([0.314,0.418,0.628,0.837,1.04,1.25]) # TM Reference Values
 
 	# kds = np.linspace(1e-9,2.4,50)
 	# kds = np.linspace(0.1,0.5,50)
-	# kds = np.linspace(0.5,1.5,50)
+	kds = np.linspace(1e-15,1.5,2)
 
-	res = 2e3
+	res = 1e3
 	incident_mode = 0
 	pol='TM'
 
 	imax = 100
-	p_max = 50
+	p_max = 100
 
-	ams = putil.stackPoints([
-		Reflection(kd,n,
-			pol=pol,
-			incident_mode=incident_mode,
-			p_res=res,
-			imax=imax,
-			p_max=p_max,
-			first_order = False,
-			debug=False
-			) for kd in kds])
+	plt.ion()
+	
 
-	# fig, ax = plt.subplots(2,figsize=(7,5))
-	# [ax[0].plot(kds, abs(am)     , color=colors[i]) for i,am in enumerate(ams)]
-	# [ax[1].plot(kds, np.angle(am), color=colors[i]) for i,am in enumerate(ams)]
-	# plt.show()
-	print ams
-	print
-	print abs(ams)**2
+	fig, ax = plt.subplots(2,figsize=(7,5))
+	plt.show()
+
+	ams = []
+
+	for kdi,kd in enumerate(kds):
+
+		# ams = putil.stackPoints([
+		# 	Reflection(kd,n,
+		# 		pol=pol,
+		# 		incident_mode=incident_mode,
+		# 		p_res=res,
+		# 		imax=imax,
+		# 		p_max=p_max,
+		# 		first_order = False,
+		# 		debug=False
+		# 		) for kd in kds])
+
+		ams.append(
+			Reflection(kd,n,
+				pol=pol,
+				incident_mode=incident_mode,
+				p_res=res,
+				imax=imax,
+				p_max=p_max,
+				first_order = True,
+				debug=False
+				)
+			)
+
+		data = putil.stackPoints(ams)
+		data = np.array(data)
+
+		[ax[0].plot(kds[:kdi+1], abs(data[i])     , color=colors[i],marker='o') for i,am in enumerate(data)]
+		[ax[1].plot(kds[:kdi+1], np.angle(data[i]), color=colors[i]) for i,am in enumerate(data)]
+
+		fig.canvas.draw()
+
+	plt.ioff()
+	plt.show()
+
+	## Output for Comparison with Gelin's Table
+	# print ams
+	# print
+	# print abs(ams)**2
 
 def test_v():
 
@@ -783,9 +828,31 @@ def test_f():
 	plt.plot(ps/k,I.real)
 	plt.show()
 
+def test_draw():
+
+	import time
+
+	# mpl.use('MacOSX')
+	plt.ion()
+	plt.figure()
+	plt.show()
+
+	a = np.array([1,2,3])
+	plt.plot(a,'ro')
+	plt.draw()
+
+	time.sleep(3)
+
+	# plt.plot(2*a,'bo')
+	# plt.draw()
+
+	# time.sleep(1)
+
+	plt.ioff()
+	plt.show()
 
 if __name__ == '__main__':
-  # test_beta()
+  # test_draw()
   # test_beta_marcuse()
   main()
   # test_f()
