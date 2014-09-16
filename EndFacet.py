@@ -311,10 +311,10 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 			# V[i,:,:] = Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d)*(gm[i]**2 + Km[i]**2) - p*sin(p*d)*((gm[i]**2 + p**2)/n**2 + Km[i]**2 - p**2)) \
 			# 					 / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
 
-			V[i,:,:]  = Am[i] * Bt * cos(Km[i]*d) * ((Km[i]*sin(p*d) - p*cos(p*d)*tan(Km[i]*d))/(eps*(Km[i]**2 - p**2)) \
+			V[i,:,:]  = Am[i] * Bt * cos(Km[i]*d) * ((Km[i]*cos(p*d)*tan(Km[i]*d) - p*sin(p*d))/(eps*(Km[i]**2 - p**2)) \
 				           - (p*sin(p*d) - gm[i]*cos(p*d))/(gm[i]**2 + p**2))
 
-			kp[i,:,:] = Am[i] * Bt * cos(Km[i]*d) * ((Km[i]*sin(p*d) - p*cos(p*d)*tan(Km[i]*d))/(     Km[i]**2 - p**2)  \
+			kp[i,:,:] = Am[i] * Bt * cos(Km[i]*d) * ((Km[i]*cos(p*d)*tan(Km[i]*d) - p*sin(p*d))/(     Km[i]**2 - p**2)  \
 				           - (p*sin(p*d) - gm[i]*cos(p*d))/(gm[i]**2 + p**2))
 
 		else:
@@ -607,12 +607,12 @@ def main():
 	# kds = np.linspace(0.1,0.5,50)
 	# kds = np.linspace(0.5,1.5,50)
 
-	res = 1e3
+	res = 2e3
 	incident_mode = 0
 	pol='TM'
 
 	imax = 100
-	p_max = 100
+	p_max = 50
 
 	ams = putil.stackPoints([
 		Reflection(kd,n,
@@ -621,7 +621,7 @@ def main():
 			p_res=res,
 			imax=imax,
 			p_max=p_max,
-			first_order = True,
+			first_order = False,
 			debug=False
 			) for kd in kds])
 
