@@ -17,6 +17,8 @@ import time
 
 from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
 
+
+
 np.set_printoptions(linewidth=150, precision=8)
 
 pi = sp.pi
@@ -39,6 +41,9 @@ colors = ['r','g','b','#FFE21A','c','m']
 plt.rcParams['image.origin'] = 'lower'
 plt.rcParams['image.interpolation'] = 'nearest'
 
+def cot(x):
+	return 1/tan(x)
+
 def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 
 	'''
@@ -58,6 +63,8 @@ def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 	d - half-thickness of slab
 
 	'''
+	# # Use to force plot/exit when debugging
+	# plot=True
 
 	even = (polarity=='even')
 
@@ -79,7 +86,8 @@ def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 
 	Ks = np.array([])
 
-	toggle = True # need to accept alternating zero crossings - the true modes alternate with infinite discontinuites of the tangent function
+	# need to accept alternating zero crossings - the true modes alternate with infinite discontinuites of the tangent function
+	toggle = True
 	for i,idx in enumerate(np.nonzero(diff)[0]):
 
 		if toggle:
@@ -90,6 +98,7 @@ def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 
 		toggle = not toggle
 
+	if not even: Ks = Ks[1:] # Discard artifact intersection
 	Bs = sqrt((n*k)**2 - Ks**2)
 
 	# Truncate or pad output as necessary
@@ -102,18 +111,29 @@ def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 
 	# Plots for debugging
 	if plot:
+
+		plt.ioff()
+
 		print 'Number of modes:', Nmodes
+		print Ks*d/pi
 
 		plt.figure()
+
 		plt.plot(kappa*d/pi, tan(kappa*d))
-		plt.plot(kappa*d/pi, sqrt(n**2*k**2 - kappa**2 - k**2)/kappa)
+
+		if even:
+			plt.plot(kappa*d/pi, C * sqrt(n**2*k**2 - kappa**2 - k**2)/kappa)
+		else:
+			plt.plot(kappa*d/pi, 1/C * (-kappa)/sqrt(n**2*k**2 - kappa**2 - k**2))
+
 		plt.plot(kappa*d/pi, trans(kappa))
 		plt.plot(kappa*d/pi, np.sign(trans(kappa)), 'k:')
 
 		plt.xlabel(r'$\kappa d/\pi$')
 		plt.axhline(0, c='k')
-		plt.ylim(-10,10)
+		# plt.ylim(-10,10)
 		plt.show()
+		exit()
 
 	return np.array(Bs)
 
@@ -142,8 +162,10 @@ def test_beta_marcuse():
 		bTM = beta_marcuse(n,d,pol='TM',wl=wl)[0]
 		print "%.5f, %.5f, %.5f" % (bTM * d, target_vals_TM[i], abs((bTM * d - target_vals_TM[i]) / target_vals_TM[i]))
 
-def numModes(ncore,nclad,kd):
-	return np.ceil(sqrt(ncore**2 - nclad**2)*kd/pi).astype(int)
+def numModes(ncore,nclad,kd, polarity='even'):
+	# See Marcuse, Light Transmission Optics, p. 310 for graphical origin
+	C = 0 if polarity=='even' else pi/2.
+	return np.ceil((sqrt(ncore**2 - nclad**2)*kd - C) / pi).astype(int)
 
 def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 	p_max=20,p_res=1e3,imax=100,convergence_threshold=1e-5,first_order=False, debug=False):
@@ -218,20 +240,20 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 
 	# wavevectors
 
-	Ns = numModes(n,1,kd)
+	Ns = numModes(n,1,kd,polarity)
 	N = np.amax(Ns)
 	print 'Number of Modes Detected:', N
 
 	# confirm source mode is supported by slab (ie is above cutoff)
 	if incident_mode+1 > N:
 		print 'Source Mode below cutoff.'
-		return np.nan * np.ones(N)
+		return np.nan * np.ones(N), [np.nan]
 	
 	Bo = np.zeros(len(d))
 	Bm = np.zeros((np.amax(N),len(d)))
 
 	for j,dj in enumerate(d):
-		Bm[:,j] = beta_marcuse(n,dj,wl=wl,Nmodes=N, pol=pol, plot=False)			# Propagation constants of waveguide modes
+		Bm[:,j] = beta_marcuse(n,dj,wl=wl,Nmodes=N, pol=pol, polarity=polarity, plot=False)			# Propagation constants of waveguide modes
 		Bo[j] = Bm[incident_mode,j]
 
 	gm  = sqrt(      -k**2 + Bm**2)						# transverse wavevectors in air for guided modes
@@ -270,12 +292,18 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 
 	if pol == 'TE':	
 
-		Am = sqrt(2*w*mu*P / (Bm*d + Bm/gm))
-
-		Bt = sqrt(2*w*mu*P / (pi*abs(Bc))) 
-		Br = sqrt(2*p**2*w*mu*P / (pi*abs(Bc)*(p**2*cos(o*d)**2 + o**2*sin(o*d)**2)))
+		Am = sqrt(2*w*mu*P / (Bm*d + Bm/gm)) 
 		
-		Dr = 1/2. * exp(1j*p*d) * (cos(o*d) - 1j*o/p * sin(o*d))
+		if even:
+			Bt = sqrt(2*w*mu*P / (pi*abs(Bc)))
+			Br = sqrt(2*p**2*w*mu*P / (pi*abs(Bc)*(p**2*cos(o*d)**2 + o**2*sin(o*d)**2)))
+			Dr = 1/2. * exp(1j*p*d) * (cos(o*d) - 1j*o/p * sin(o*d))
+		else:
+			Bt = sqrt(2*w*mu*P * p**2 / (pi*abs(Bc)*o**2))
+			Br = sqrt(2*p**2*w*mu*P / (pi*abs(Bc)*(p**2*sin(o*d)**2 + o**2*cos(o*d)**2)))
+			Dr = 1/2. * exp(1j*p*d) * (sin(o*d) + 1j*o/p * cos(o*d))
+		
+		
 
 	else:
 
@@ -312,11 +340,7 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 		else:
 			pass
 	else:
-		if even:
-			G = np.zeros((N,len(p),Nds),dtype = 'complex')
-		else:
-			xi = np.zeros((N,len(p),Nds),dtype = 'complex')
-
+		G = np.zeros((N,len(p),Nds),dtype = 'complex')
 
 	for i in range(N):
 
@@ -332,7 +356,7 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 				G[i,:,:] = 2 * k**2 * (eps-1) * Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d) - p*sin(p*d)) / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
 
 			else:
-				xi[i,:,:] = 2* Am[i] * Bt * sin(Km[i]*d) * ((p*cos(p*d) - Km[i]*cot(Km[i]*d)*sin(p*d))/(Km[i]**2-p**2) \
+				G[i,:,:] = 2* Am[i] * Bt * sin(Km[i]*d) * ((p*cos(p*d) - Km[i]*cot(Km[i]*d)*sin(p*d))/(Km[i]**2-p**2) \
 										+ (gm[i]*sin(p*d) + p*cos(p*d))/(gm[i]**2 + p**2))
 
 
@@ -383,22 +407,30 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 
 	else:
 
-		# # Gelin's definition of F, with the sin arguments corrected:
-		# I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
-		# F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
-		# 		np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I)
+		if even:
 
-		# This method for F is based on a more direct solution of the field overlap integral, with less
-		# subsequent algebra:
-		F = 2*Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
-	 								 2*(D1 * (exp(-1j*p1*d) * (p2*sin(pd)-1j*p1*cos(pd))) + 1j*p1 ).real / (p1**2-p2**2) )
-	
+			# # Gelin's definition of F, with the sin arguments corrected:
+			# I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
+			# F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
+			# 		np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I)
+
+			# This method for F is based on a more direct solution of the field overlap integral, with less
+			# subsequent algebra:
+			F = 2*Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
+		 								 2*(D1 * (exp(-1j*p1*d) * (p2*sin(pd)-1j*p1*cos(pd))) + 1j*p1 ).real / (p1**2-p2**2) )
+		
+		else:
+
+			F = 2*Br1*Bt2 * ((p2*sin(od)*cos(pd) - o1*cos(od)*sin(pd))/(o1**2-p2**2) - \
+										 2*(D1 * (exp(-1j*p1*d) * (p2*cos(pd)+1j*p1*sin(pd))) -    p1 ).real / (p1**2-p2**2) )
+		
+
 		# # Handle Cauchy singularities
 		cauchy = pi * Bt2 * Br1 * (D1 + Dstar)
 		idx = np.where(1 - np.isfinite(F))
 		F[idx] = 0
 		# F[idx] = cauchy[idx]
-		
+
 
 	if debug:
 
@@ -637,8 +669,9 @@ def main():
 	res = 5e2
 	incident_mode = 0
 	pol='TE'
+	polarity = 'odd'
 
-	imax = 10
+	imax = 100
 	p_max = 20
 
 	plt.ion()
@@ -653,21 +686,11 @@ def main():
 
 	for kdi,kd in enumerate(kds):
 
-		# ams = putil.stackPoints([
-		# 	Reflection(kd,n,
-		# 		pol=pol,
-		# 		incident_mode=incident_mode,
-		# 		p_res=res,
-		# 		imax=imax,
-		# 		p_max=p_max,
-		# 		first_order = False,
-		# 		debug=False
-		# 		) for kd in kds])
-
 		print '\nkd:', kd
 
 		a, acc = Reflection(kd,n,
 												pol=pol,
+												polarity=polarity,
 												incident_mode=incident_mode,
 												p_res=res,
 												imax=imax,
