@@ -19,10 +19,6 @@ from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
 
 np.set_printoptions(linewidth=150, precision=8)
 
-# plt.rcParams['backend'] = 'TkAgg'
-# mpl.use('MacOSX')
-# plt.rcParams['interactive'] = True
-
 pi = sp.pi
 sqrt = sp.emath.sqrt
 # mu = 4*pi * 1e-7
@@ -43,7 +39,7 @@ colors = ['r','g','b','#FFE21A','c','m']
 plt.rcParams['image.origin'] = 'lower'
 plt.rcParams['image.interpolation'] = 'nearest'
 
-def beta_marcuse(n,d,wl=1.,pol='TM',Nmodes=None,plot=False):
+def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 
 	'''
 	Based on theory in Marcuse, 1970 "Radiation Losses in Tapered Dielectric Waveguides"
@@ -63,13 +59,18 @@ def beta_marcuse(n,d,wl=1.,pol='TM',Nmodes=None,plot=False):
 
 	'''
 
+	even = (polarity=='even')
+
 	k = 2*pi/wl
 	kappa = np.linspace(0,n*k,10000)
 	gamma = lambda x: sqrt((n*k)**2 - x**2 - k**2)
 	
 	C = n**2 if pol == 'TM' else 1.
 
-	trans = lambda K: tan(K * d) - C * np.real(gamma(K)/K)
+	if even:
+		trans = lambda K: tan(K * d) - C * np.real(gamma(K)/K)
+	else:
+		trans = lambda K: tan(K * d) + 1/C * np.real(K/gamma(K))
 
 	# Find zero crossings, then use the brentq method to find the precise zero crossing 
 	# between the two nearest points in the array
@@ -144,7 +145,8 @@ def test_beta_marcuse():
 def numModes(ncore,nclad,kd):
 	return np.ceil(sqrt(ncore**2 - nclad**2)*kd/pi).astype(int)
 
-def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,convergence_threshold=1e-5,first_order=False, debug=False):
+def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
+	p_max=20,p_res=1e3,imax=100,convergence_threshold=1e-5,first_order=False, debug=False):
 	'''
 
 	Solve for amplitudes of all scattered modes resulting from a guided mode incident on the 
@@ -197,6 +199,8 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	Nds = len(d)
 
 	TM = (pol == 'TM')
+
+	even = (polarity == 'even')
 	
 	# # Debugger for mode solver
 	# wl = 1.0
@@ -302,20 +306,21 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	# Overlap Integral Solutions, Gm(p) and F(p',p) = F(p1,p2)
 
 	if TM:
-		V  = np.zeros((N,len(p),Nds),dtype = 'complex')
-		kp = np.zeros((N,len(p),Nds),dtype = 'complex')
+		if even:
+			V  = np.zeros((N,len(p),Nds),dtype = 'complex')
+			kp = np.zeros((N,len(p),Nds),dtype = 'complex')
+		else:
+			pass
 	else:
-		G = np.zeros((N,len(p),Nds),dtype = 'complex')
+		if even:
+			G = np.zeros((N,len(p),Nds),dtype = 'complex')
+		else:
+			xi = np.zeros((N,len(p),Nds),dtype = 'complex')
 
 
 	for i in range(N):
 
 		if pol == 'TM':
-			# V[i,:,:] = Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d)*(gm[i]**2 + Km[i]**2) - p*sin(p*d)*((gm[i]**2 + p**2) + Km[i]**2 - p**2)) \
-			# 					 / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
-			# V[i,:,:] = Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d)*(gm[i]**2 + Km[i]**2) - p*sin(p*d)*((gm[i]**2 + p**2)/n**2 + Km[i]**2 - p**2)) \
-			# 					 / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
-
 			V[i,:,:]  = Am[i] * Bt * cos(Km[i]*d) * ((Km[i]*cos(p*d)*tan(Km[i]*d) - p*sin(p*d))/(eps*(Km[i]**2 - p**2)) \
 				           - (p*sin(p*d) - gm[i]*cos(p*d))/(gm[i]**2 + p**2))
 
@@ -323,7 +328,12 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 				           - (p*sin(p*d) - gm[i]*cos(p*d))/(gm[i]**2 + p**2))
 
 		else:
-			G[i,:,:] = 2 * k**2 * (eps-1) * Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d) - p*sin(p*d)) / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
+			if even:
+				G[i,:,:] = 2 * k**2 * (eps-1) * Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d) - p*sin(p*d)) / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
+
+			else:
+				xi[i,:,:] = 2* Am[i] * Bt * sin(Km[i]*d) * ((p*cos(p*d) - Km[i]*cot(Km[i]*d)*sin(p*d))/(Km[i]**2-p**2) \
+										+ (gm[i]*sin(p*d) + p*cos(p*d))/(gm[i]**2 + p**2))
 
 
 	# Convert to multi-dimensional arrays to work with functions of p',p. When transposing, 
@@ -446,6 +456,7 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 		V = np.nan_to_num(V)
 	else:
 		G = np.nan_to_num(G)
+		Gm = G[incident_mode]
 
 	if TM:
 		vm = V[incident_mode]
@@ -537,9 +548,7 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	'''
 
 	error = (1+am[0,:]) * (1-am[0,:].conjugate()) - np.sum(abs(am[1:,:])**2, axis=0) - np.sum((abs(qt)**2 + abs(qr)**2) * np.conjugate(Bc) / abs(Bc), axis=0) * dp
-	err2  = 1 - np.sum(abs(am)**2, axis=0) - np.sum(abs(qt**2)*(p<=k) + abs(qr)**2*(p<=k), axis=0) * dp
 	print 'Error   in Power Conservation: ', abs(error.real)
-	print 'Error 2 in Power Conservation: ', abs(err2.real)
 	
 
 	'''
@@ -547,9 +556,12 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	'''
 
 	if TM:
-		pass
+		# equation A14 in Gelin's paper seems to be off by 1/2, thus preceeding factor of 2
+		shouldBeOne = 2 * 1/(4*w*eo*P) * np.trapz(qt*(Bc*kpm + Bo*vm), x=p, axis=0)
 	else:
-		print 'Gelin Eq. 14: ', 1/(4*w*mu*P) * np.trapz(qt * (Bm[incident_mode]+Bc) * G[incident_mode,:], dx=dp, axis=0)
+		shouldBeOne = 1/(4*w*mu*P) * np.trapz(qt * (Bo+Bc) * Gm, x=p, axis=0)
+
+	print 'Gelin Eq. 14: ', shouldBeOne
 
 	'''
 	Print Stats
@@ -600,9 +612,9 @@ def Reflection(kd,n,incident_mode=0,pol='TE',p_max=20,p_res=1e3,imax=100,converg
 	# plt.show()
 
 	if converged:
-		return am
+		return am, shouldBeOne
 	else:
-		return np.nan * np.ones(N)
+		return np.nan * np.ones(N), [np.nan]
 
 
 
@@ -620,22 +632,24 @@ def main():
 
 	# kds = np.linspace(1e-9,2.4,50)
 	# kds = np.linspace(0.1,0.5,50)
-	kds = np.linspace(1e-15,1.5,2)
+	kds = np.linspace(1e-15,1.5,50)
 
-	res = 1e3
+	res = 5e2
 	incident_mode = 0
-	pol='TM'
+	pol='TE'
 
-	imax = 100
-	p_max = 100
+	imax = 10
+	p_max = 20
 
 	plt.ion()
 	
 
-	fig, ax = plt.subplots(2,figsize=(7,5))
+	fig, ax = plt.subplots(3,figsize=(4.5,8))
+	ax[2].axhline(1, color='k', ls = ':')
 	plt.show()
 
 	ams = []
+	accuracy = []
 
 	for kdi,kd in enumerate(kds):
 
@@ -650,23 +664,31 @@ def main():
 		# 		debug=False
 		# 		) for kd in kds])
 
-		ams.append(
-			Reflection(kd,n,
-				pol=pol,
-				incident_mode=incident_mode,
-				p_res=res,
-				imax=imax,
-				p_max=p_max,
-				first_order = True,
-				debug=False
-				)
-			)
+		print '\nkd:', kd
+
+		a, acc = Reflection(kd,n,
+												pol=pol,
+												incident_mode=incident_mode,
+												p_res=res,
+												imax=imax,
+												p_max=p_max,
+												first_order=False,
+												debug=False
+												)
+
+		ams.append(a)
+		accuracy.append(np.abs(acc))
+		print acc
 
 		data = putil.stackPoints(ams)
 		data = np.array(data)
 
-		[ax[0].plot(kds[:kdi+1], abs(data[i])     , color=colors[i],marker='o') for i,am in enumerate(data)]
-		[ax[1].plot(kds[:kdi+1], np.angle(data[i]), color=colors[i]) for i,am in enumerate(data)]
+		[ax[0].plot(kds[:kdi+1], abs(data[i])        , color=colors[i], marker='o') for i,am in enumerate(data)]
+		[ax[1].plot(kds[:kdi+1], np.angle(data[i])/pi, color=colors[i], marker='o') for i,am in enumerate(data)]
+		ax[0].set_ylim(0,1.2)
+		
+		[ax[2].plot(kds[:kdi+1], accuracy, color='b', marker='o', lw=2) for i,am in enumerate(data)]
+		ax[2].set_ylim(0,1.5)
 
 		fig.canvas.draw()
 
@@ -677,6 +699,19 @@ def main():
 	# print ams
 	# print
 	# print abs(ams)**2
+
+'''
+TODO
+
+plot error
+use mag ao for convergence?
+add odd modes
+compare RCWA
+output to file
+optimization of resolution - pick one kd and sweep
+'''
+
+
 
 def test_v():
 
