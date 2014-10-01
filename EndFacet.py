@@ -8,6 +8,8 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 
+from scipy.integrate import quadrature as quad
+
 import putil
 import sys
 import os
@@ -17,7 +19,7 @@ import time
 
 from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
 
-
+prop = mpl.font_manager.FontProperties(fname='/Library/Fonts/GillSans.ttc')
 
 np.set_printoptions(linewidth=150, precision=8)
 
@@ -77,7 +79,7 @@ def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 	if even:
 		trans = lambda K: tan(K * d) - C * np.real(gamma(K)/K)
 	else:
-		trans = lambda K: tan(K * d) + 1/C * np.real(K/gamma(K))
+		trans = lambda K: tan(K * d) + 1/C * np.real(K/gamma(K).real)
 
 	# Find zero crossings, then use the brentq method to find the precise zero crossing 
 	# between the two nearest points in the array
@@ -90,15 +92,21 @@ def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 	toggle = True
 	for i,idx in enumerate(np.nonzero(diff)[0]):
 
-		if toggle:
+		if toggle and abs(diff[idx])==2:
 			k_low = kappa[idx-1]
 			k_high = kappa[idx+1]
 
-			Ks = np.append(Ks, sp.optimize.brentq(trans,k_low,k_high))
+			try:
+				Ks = np.append(Ks, sp.optimize.brentq(trans,k_low,k_high))
+			except:
+				print 'BrentQ Failed. Plotting Transcendental function...'
+				print 'Zero Crossing: (%.3f)' % kappa[idx] * d/pi
+				print 'Attempted values of Kd/pi: (%.3f, %.3f)' % (k_low*d/pi, k_high*d/pi)
+				print 'Function evaluates to (%.3f, %.3f)' % (trans(k_low),trans(k_high))
+				plot=True
 
 		toggle = not toggle
 
-	if not even: Ks = Ks[1:] # Discard artifact intersection
 	Bs = sqrt((n*k)**2 - Ks**2)
 
 	# Truncate or pad output as necessary
@@ -116,6 +124,7 @@ def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 
 		print 'Number of modes:', Nmodes
 		print Ks*d/pi
+		print 'Zero Crossings:', kappa[np.nonzero(diff)[0]] * d/pi
 
 		plt.figure()
 
@@ -124,7 +133,8 @@ def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 		if even:
 			plt.plot(kappa*d/pi, C * sqrt(n**2*k**2 - kappa**2 - k**2)/kappa)
 		else:
-			plt.plot(kappa*d/pi, 1/C * (-kappa)/sqrt(n**2*k**2 - kappa**2 - k**2))
+			plt.plot(kappa*d/pi, 1/C * (-kappa)/gamma(kappa).real)
+			# plt.plot(kappa*d/pi, 1/C * (-kappa)/sqrt(n**2*k**2 - kappa**2 - k**2))
 
 		plt.plot(kappa*d/pi, trans(kappa))
 		plt.plot(kappa*d/pi, np.sign(trans(kappa)), 'k:')
@@ -206,6 +216,7 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 	if type(kd) in [int, float, np.float64]: kd = np.array([kd])
 	if type(kd) == list: kd = np.array(kd)
 
+	print kd
 
 	'''
 	Calculate wavevectors and other physical quantities needed for all functions
@@ -292,7 +303,7 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 
 	if pol == 'TE':	
 
-		Am = sqrt(2*w*mu*P / (Bm*d + Bm/gm)) 
+		Am = sqrt(2*w*mu*P / (Bm*d + Bm/gm)) # Tested for both even and odd
 		
 		if even:
 			Bt = sqrt(2*w*mu*P / (pi*abs(Bc)))
@@ -348,15 +359,17 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 			V[i,:,:]  = Am[i] * Bt * cos(Km[i]*d) * ((Km[i]*cos(p*d)*tan(Km[i]*d) - p*sin(p*d))/(eps*(Km[i]**2 - p**2)) \
 				           - (p*sin(p*d) - gm[i]*cos(p*d))/(gm[i]**2 + p**2))
 
-			kp[i,:,:] = Am[i] * Bt * cos(Km[i]*d) * ((Km[i]*cos(p*d)*tan(Km[i]*d) - p*sin(p*d))/(     Km[i]**2 - p**2)  \
-				           - (p*sin(p*d) - gm[i]*cos(p*d))/(gm[i]**2 + p**2))
+			kp[i,:,:]     = Am[i] * Bt * cos(Km[i]*d) * ((  Km[i]*cos(p*d)*tan(Km[i]*d) - p*sin(p*d))/(Km[i]**2 - p**2)  \
+				            - (p*sin(p*d) - gm[i]*cos(p*d))/(gm[i]**2 + p**2))
+  		#G[i,:,:] = 2 * Am[i] * Bt * sin(Km[i]*d) * ((- Km[i]*cot(Km[i]*d)*sin(p*d) + p*cos(p*d))/(Km[i]**2 - p**2)  \
+			# 						+ (p*cos(p*d) + gm[i]*sin(p*d))/(gm[i]**2 + p**2))
 
 		else:
 			if even:
 				G[i,:,:] = 2 * k**2 * (eps-1) * Am[i] * Bt * cos(Km[i]*d) * (gm[i]*cos(p*d) - p*sin(p*d)) / ((Km[i]**2 - p**2)*(gm[i]**2 + p**2))
 
 			else:
-				G[i,:,:] = 2* Am[i] * Bt * sin(Km[i]*d) * ((p*cos(p*d) - Km[i]*cot(Km[i]*d)*sin(p*d))/(Km[i]**2-p**2) \
+				G[i,:,:] = 2 * Am[i] * Bt * sin(Km[i]*d) * ((p*cos(p*d) - Km[i]*cot(Km[i]*d)*sin(p*d))/(Km[i]**2-p**2) \
 										+ (gm[i]*sin(p*d) + p*cos(p*d))/(gm[i]**2 + p**2))
 
 
@@ -428,8 +441,8 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 		# # Handle Cauchy singularities
 		cauchy = pi * Bt2 * Br1 * (D1 + Dstar)
 		idx = np.where(1 - np.isfinite(F))
-		F[idx] = 0
-		# F[idx] = cauchy[idx]
+		# F[idx] = 0
+		F[idx] = cauchy[idx]
 
 
 	if debug:
@@ -644,7 +657,7 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 	# plt.show()
 
 	if converged:
-		return am, shouldBeOne
+		return am, shouldBeOne[0]
 	else:
 		return np.nan * np.ones(N), [np.nan]
 
@@ -654,25 +667,28 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 def main():
 
 	# Define Key Simulation Parameters
-
-	n = sqrt(20)
 	
-	# kds = np.array([0.837])
+	# kds = np.array([3.])
 	
 	# kds = np.array([0.209,0.418,0.628,0.837,1.04,1.25]) # TE Reference values
 	# kds = np.array([0.314,0.418,0.628,0.837,1.04,1.25]) # TM Reference Values
 
-	# kds = np.linspace(1e-9,2.4,50)
-	# kds = np.linspace(0.1,0.5,50)
-	kds = np.linspace(1e-15,1.5,50)
+	# To convert into the d = h/wl notation for dielectricSlab, use:
+	# kd = d*pi/n
 
-	res = 5e2
+	kds = np.linspace(1e-9,2.4,100)
+	# kds = np.linspace(0.1,0.5,50)
+	# kds = np.linspace(1e-15,3,50)
+
+	n = sqrt(20)
+
+	res = 0.5e3
 	incident_mode = 0
 	pol='TE'
-	polarity = 'odd'
+	polarity = 'even'
 
 	imax = 100
-	p_max = 20
+	p_max = 100
 
 	plt.ion()
 	
@@ -701,7 +717,6 @@ def main():
 
 		ams.append(a)
 		accuracy.append(np.abs(acc))
-		print acc
 
 		data = putil.stackPoints(ams)
 		data = np.array(data)
@@ -723,16 +738,83 @@ def main():
 	# print
 	# print abs(ams)**2
 
+	## export data
+	output = np.vstack((kds,data,np.array(accuracy, dtype=complex)))
+	print output
+
+	sname = putil.DATA_PATH + '/Rectangular Resonator/End Facet Reflection Coefs/endFacet_a' + str(incident_mode) + '_' + pol + '_' + polarity + '_' + str(n) + '.txt'
+	np.savetxt(sname,output)
+
+
 '''
 TODO
 
-plot error
+bug when submitting multiple kds - returns nan
+Fix Gelin error equation for odd modes
+mode solver error for odd TE when second mode appears
 use mag ao for convergence?
-add odd modes
 compare RCWA
 output to file
 optimization of resolution - pick one kd and sweep
+fix error for int type kds
 '''
+
+def PrettyPlots():
+
+	n = sqrt(20)
+	
+	incident_mode = 1
+	pol='TE'
+	polarity = 'even'
+
+
+	fname = putil.DATA_PATH + '/Rectangular Resonator/End Facet Reflection Coefs/endFacet_a' + str(incident_mode) + '_' + pol + '_' + polarity + '_' + str(n) + '.txt'
+
+	with open(fname,'r') as f:
+		s = f.read()
+
+	s = s.replace('+-','-')
+	s = s.replace('(','')
+	s = s.replace(')','')
+
+	with open(putil.DATA_PATH + '/endfacet_temp.txt','w') as f:	
+		f.write(s)
+
+
+	data = np.loadtxt(putil.DATA_PATH + '/endfacet_temp.txt', dtype=complex)
+	
+	N = data.shape[0] - 2
+
+	kd = data[0,:]
+	err = data[-1,:]
+
+	idx = np.arange(N) + 1
+
+	fig, ax = plt.subplots(2,sharex=True,figsize=(4.5,7))
+
+	for i in idx:
+		ax[0].plot(kd,  abs(data[i,:])        , color=colors[i-1], lw=2)
+		ax[1].plot(kd, -np.angle(data[i,:])/pi, color=colors[i-1], lw=2)
+
+	ax[1].axhline(0, color='k', ls=':')
+
+	ax[0].set_xlim(0.6,1.5)
+	ax[0].set_ylim(0,1.1)
+	
+	ax[1].set_ylim(1/6.,2/3.)
+
+	ax[1].set_xlabel(r'$k_{o}d$')
+
+	ax[0].set_ylabel(r'$|a_{n}|$', fontsize=14)
+	ax[1].set_ylabel(r'$\angle a_{n}$', fontsize=14)
+
+	labels = [r'$a_{%u}$' % (2*j) for j in range(3)]
+	ax[1].legend(labels, loc='lower left')
+
+	ax[0].set_title(pol + ' - ' + r'Source Mode: $a_{%u}$' % 2*incident_mode, fontproperties=prop, fontsize=18)
+
+	plt.tight_layout()
+	plt.show()
 
 
 
@@ -913,4 +995,4 @@ if __name__ == '__main__':
   # test_draw()
   # test_beta_marcuse()
   main()
-  # test_f()
+  # PrettyPlots()

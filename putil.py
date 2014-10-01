@@ -204,16 +204,16 @@ def PlotSeries(xs,yarray,cmap='RdYlBu',ax=None):
 	norm = mpl.colors.Normalize(vmin=0, vmax=n)
 	sm = mpl.cm.ScalarMappable(norm=norm,cmap=cmap)
 
-	print len(ax)
+	print np.shape(ax)
 
-	if len(ax)==1:
+	if np.shape(ax)==():
 		for i in range(n):
 			ax.plot(xs,yarray[:,i],color=sm.to_rgba(i),lw=2)
 
-	elif len(ax)>1: # "waterfall" stack of axes
+	elif np.shape(ax)[0]>1: # "waterfall" stack of axes
 
-		if len(ax) != n:
-			print len(ax)
+		if np.shape(ax)[0] != n:
+			print np.shape(ax)[0]
 			print n 
 			print 'PlotSeries: incorrect number of axes for data'
 
@@ -499,6 +499,14 @@ def test_stackPoints():
 	print stackPoints([a,b])
 	print stackPoints([a,b])[0]
 	print stackPoints([a,b]).shape
+
+def Closest(array,value):
+	'''
+	return index in array of the element closest magnitude to a target value
+	'''
+	idx = np.where(np.abs(array-value) == np.amin(np.abs(array-value)))[0][0]
+
+	return idx
 
 
 if __name__ == '__main__':
