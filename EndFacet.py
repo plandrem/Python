@@ -254,79 +254,81 @@ def RefQuad(kd,n,incident_mode=0,pol='TE',polarity='even',imax=100,convergence_t
 		pass
 
 	'''
-	Run Neuman series and test for convergence of the fields
+	Define recursive functions
 	'''
 
-	# Initialize coefficients to zero
-	am = np.zeros(N, dtype=complex)
-	qr = lambda p: 0
+	pmax=100
 
-	repeat = True; converged = False
+	if pol == 'TE':
 
-	for i in range(imax):
+		# QT			
 
-		if repeat == False:
-			converged = True
-			break
+		def qt(p,recursion_level):
+			print 'qt:', recursion_level
 
-		print '\nComputing iteration %u of %u' % (i+1,imax)
+			integrand = lambda P,p: qr(P,recursion_level) * (Bo-Bc(P)) * F(P,p)
 
+			return 1/(2*w*mu*P) * abs(Bc(p)) / (Bo+Bc(p)) * (2*Bo*G(incident_mode,p) \
+				+ sp.integrate.quad(integrand,0,pmax,args=(p,),points=[p])[0] \
+				+ np.sum([(Bo-Bm[n]) * am(recursion_level)[n] * G(n,p) for n in range(N)]))
 
-		if pol == 'TE':
+		# An
 
-			# QT
-
-			integrand_qt = lambda P,p: qr(P) * (Bo-Bc(P)) * F(P,p)
-
-			qt = lambda p: 1/(2*w*mu*P) * abs(Bc(p)) / (Bo+Bc(p)) * (2*Bo*G(incident_mode,p) \
-				+ sp.integrate.quad(integrand_qt,0,np.inf,args=(p,))[0] \
-				+ np.sum([(Bo-Bm[n]) * am[n] * G(n,p) for n in range(N)]))
-
-			# An
-
-			am_prev = am
-
-			integrand_am = lambda m,p: qt(p) * (Bm[m]-Bc(p)) * G(m,p)
-			print integrand_am(0,n*k)
-			am = np.array([ 1/(4*w*mu*P) * sp.integrate.quad(integrand_am,0,np.inf,args=(m,))[0] for m in range(N) ])
-
-			# QR
-
-			integrand_qr = lambda P,p: qt(P) * (Bc(p)-Bc(P)) * F(p,P)
+		def am(recursion_level):
+			print 'am:', recursion_level
+			if recursion_level == 0: return np.zeros(N, dtype=complex)
 			
-			qr = lambda p: 1/(4*w*mu*P) * (abs(Bc)/Bc) * sp.integrate.quad(integrand_qr,0,np.inf,args=(p,))[0]
-
-		else: #TM
-			pass
-
-		'''
-		Test Convergence
-		'''
-
-		if first_order:
-			converged = True
-			break
-
-		delta = abs(am_prev-am)
-		repeat = True if np.any(delta > convergence_threshold) else False
-		print 'Delta ao:', np.amax(delta)
+			integrand = lambda p,m: qt(p,recursion_level-1) * (Bm[m]-Bc(p)) * G(m,p)
 		
-		# if difference in am has been rising for 2 iterations, value is diverging. Bail.
-
-		if np.amax(delta) > delta_prev and delta_prev > delta_2prev: break
-
-		delta_2prev = delta_prev
-		delta_prev = np.amax(delta)
+			return np.array([ 1/(4*w*mu*P) * sp.integrate.quad(integrand,0,pmax,args=(m,))[0] for m in range(N) ])
 
 
 
-		qt = np.vectorize(qt)
+		# QR
 
-		ps = np.linspace(0,2,100)
-		plt.plot(ps,qt(ps))
-		plt.show()
-		exit()
+		def qr(p,recursion_level):
+			print 'qr:', recursion_level
+			if recursion_level == 0: return 0
 
+			integrand = lambda P,p: qt(P,recursion_level-1) * (Bc(p)-Bc(P)) * F(p,P)
+		
+			return 1/(4*w*mu*P) * (abs(Bc(p))/Bc(p)) * sp.integrate.quad(integrand,0,pmax,args=(p,),points=[p])[0]
+
+	else: #TM
+		pass
+
+	qt = np.vectorize(qt)
+	qr = np.vectorize(qr)
+
+	ps = np.linspace(k,2*k,3)
+	qt(ps,0)
+	# ans = am(1)
+	# print ans
+	exit()
+
+	# ps = np.linspace(0,2,100)
+	# plt.plot(ps,qt(ps))
+	# plt.show()
+	# exit()
+
+	# '''
+	# Test Convergence
+	# '''
+
+	# if first_order:
+	# 	converged = True
+	# 	break
+
+	# delta = abs(am_prev-am)
+	# repeat = True if np.any(delta > convergence_threshold) else False
+	# print 'Delta ao:', np.amax(delta)
+	
+	# # if difference in am has been rising for 2 iterations, value is diverging. Bail.
+
+	# if np.amax(delta) > delta_prev and delta_prev > delta_2prev: break
+
+	# delta_2prev = delta_prev
+	# delta_prev = np.amax(delta)
 
 
 
@@ -1173,7 +1175,7 @@ def test_quad():
 
 
 if __name__ == '__main__':
-  # test_quad()
+  test_quad()
   # test_beta_marcuse()
-  main()
+  # main()
   # PrettyPlots()
