@@ -58,7 +58,7 @@ def adHoc():
 
 	plt.figure(figsize=(7,4))
 
-	plt.plot(wls,cts,'g')
+	plt.plot(wls,cts,'getSpectrum')
 	plt.xlim(400,800)
 	plt.xlabel('Wavelength (nm)')
 	plt.ylabel('R')

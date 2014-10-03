@@ -177,6 +177,165 @@ def numModes(ncore,nclad,kd, polarity='even'):
 	C = 0 if polarity=='even' else pi/2.
 	return np.ceil((sqrt(ncore**2 - nclad**2)*kd - C) / pi).astype(int)
 
+def RefQuad(kd,n,incident_mode=0,pol='TE',polarity='even',imax=100,convergence_threshold=1e-5,first_order=False, debug=False):
+
+	# constants
+	wl = 10. # Set to 10 to match Gelin values for qt
+	k = 2*pi/wl
+	d = kd/k
+	w = c*k
+	eps = n**2
+
+	TM = (pol == 'TM')
+	even = (polarity == 'even')
+	
+	# wavevectors
+
+	Ns = numModes(n,1,kd,polarity)
+	N = np.amax(Ns)
+	print 'Number of Modes Detected:', N
+
+	# confirm source mode is supported by slab (ie is above cutoff)
+	if incident_mode+1 > N:
+		print 'Source Mode below cutoff.'
+		return np.nan * np.ones(N), [np.nan]
+	
+	Bm = np.zeros(N)
+
+	Bm = beta_marcuse(n,d,wl=wl,Nmodes=N, pol=pol, polarity=polarity, plot=False)			# Propagation constants of waveguide modes
+	Bo = Bm[incident_mode]
+
+	gm  = sqrt(      -k**2 + Bm**2)						# transverse wavevectors in air for guided modes
+	Km  = sqrt(n**2 * k**2 - Bm**2)						# transverse wavevectors in high-index region for guided modes
+
+	Bc = lambda p: sqrt(k**2 - p**2)
+	o  = lambda p: sqrt((n*k)**2 - Bc(p)**2)
+
+	# Mode Amplitude Coefficients
+	P = 1
+
+	if pol == 'TE':
+		
+		Am = sqrt(2*w*mu*P / (Bm*d + Bm/gm)) # Tested for both even and odd
+
+		if even:
+			Bt = lambda p: sqrt(2*w*mu*P / (pi*abs(Bc(p))))
+			Br = lambda p: sqrt(2*p**2*w*mu*P / (pi*abs(Bc(p))*(p**2*cos(o(p)*d)**2 + o(p)**2*sin(o(p)*d)**2)))
+			Dr = lambda p: 1/2. * exp(1j*p*d) * (cos(o(p)*d) - 1j*o(p)/p * sin(o(p)*d))
+		else:
+			Bt = lambda p: sqrt(2*w*mu*P * p**2 / (pi*abs(Bc(p))*o(p)**2))
+			Br = lambda p: sqrt(2*p**2*w*mu*P / (pi*abs(Bc(p))*(p**2*sin(o(p)*d)**2 + o(p)**2*cos(o(p)*d)**2)))
+			Dr = lambda p: 1/2. * exp(1j*p*d) * (sin(o(p)*d) + 1j*o(p)/p * cos(o(p)*d))
+
+	else:
+		pass
+
+	# Overlap Integral Solutions, Gm(p) and F(p',p) = F(p1,p2)
+
+	if pol == 'TE':
+		if even:
+			G = lambda m,p: 2 * k**2 * (eps-1) * Am[m] * Bt(p) * cos(Km[m]*d) * (gm[m]*cos(p*d) - p*sin(p*d)) / ((Km[m]**2 - p**2)*(gm[m]**2 + p**2))
+
+			def _F(P,p):
+				if P == p:
+					return pi * Bt(p) * Br(P) * 2 * np.real(Dr(P))
+				else:
+					od = o(P)
+					pd = p*d
+
+					return 2*Br(P)*Bt(p) * ((o(P)*sin(od)*cos(pd) - p*cos(od)*sin(pd))/(o(P)**2-p**2) + \
+		 								 2*(Dr(p) * (exp(-1j*P*d) * (p*sin(pd)-1j*P*cos(pd))) + 1j*P ).real / (P**2-p**2) )
+
+			F = np.vectorize(_F)
+
+		else:
+			pass
+	else:
+		pass
+
+	'''
+	Run Neuman series and test for convergence of the fields
+	'''
+
+	# Initialize coefficients to zero
+	am = np.zeros(N, dtype=complex)
+	qr = lambda p: 0
+
+	repeat = True; converged = False
+
+	for i in range(imax):
+
+		if repeat == False:
+			converged = True
+			break
+
+		print '\nComputing iteration %u of %u' % (i+1,imax)
+
+
+		if pol == 'TE':
+
+			# QT
+
+			integrand_qt = lambda P,p: qr(P) * (Bo-Bc(P)) * F(P,p)
+
+			qt = lambda p: 1/(2*w*mu*P) * abs(Bc(p)) / (Bo+Bc(p)) * (2*Bo*G(incident_mode,p) \
+				+ sp.integrate.quad(integrand_qt,0,np.inf,args=(p,))[0] \
+				+ np.sum([(Bo-Bm[n]) * am[n] * G(n,p) for n in range(N)]))
+
+			# An
+
+			am_prev = am
+
+			integrand_am = lambda m,p: qt(p) * (Bm[m]-Bc(p)) * G(m,p)
+			print integrand_am(0,n*k)
+			am = np.array([ 1/(4*w*mu*P) * sp.integrate.quad(integrand_am,0,np.inf,args=(m,))[0] for m in range(N) ])
+
+			# QR
+
+			integrand_qr = lambda P,p: qt(P) * (Bc(p)-Bc(P)) * F(p,P)
+			
+			qr = lambda p: 1/(4*w*mu*P) * (abs(Bc)/Bc) * sp.integrate.quad(integrand_qr,0,np.inf,args=(p,))[0]
+
+		else: #TM
+			pass
+
+		'''
+		Test Convergence
+		'''
+
+		if first_order:
+			converged = True
+			break
+
+		delta = abs(am_prev-am)
+		repeat = True if np.any(delta > convergence_threshold) else False
+		print 'Delta ao:', np.amax(delta)
+		
+		# if difference in am has been rising for 2 iterations, value is diverging. Bail.
+
+		if np.amax(delta) > delta_prev and delta_prev > delta_2prev: break
+
+		delta_2prev = delta_prev
+		delta_prev = np.amax(delta)
+
+
+
+		qt = np.vectorize(qt)
+
+		ps = np.linspace(0,2,100)
+		plt.plot(ps,qt(ps))
+		plt.show()
+		exit()
+
+
+
+
+
+
+
+
+
+
 def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 	p_max=20,p_res=1e3,imax=100,convergence_threshold=1e-5,first_order=False, debug=False):
 	'''
@@ -427,10 +586,16 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 			# F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
 			# 		np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I)
 
-			# This method for F is based on a more direct solution of the field overlap integral, with less
-			# subsequent algebra:
-			F = 2*Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
-		 								 2*(D1 * (exp(-1j*p1*d) * (p2*sin(pd)-1j*p1*cos(pd))) + 1j*p1 ).real / (p1**2-p2**2) )
+			# Hamid's definition of F:
+			I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
+			F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
+					np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I) + \
+					np.nan_to_num(2 * o1 * (eps-1) * Bt2 * Br1 * sin(od)*cos(pd)/(p1**2-p2**2)/eps) * (1-I)
+
+			# # This method for F is based on a more direct solution of the field overlap integral, with less
+			# # subsequent algebra:
+			# F = 2*Br1*Bt2 * ((o1*sin(od)*cos(pd) - p2*cos(od)*sin(pd))/(o1**2-p2**2) + \
+		 # 								 2*(D1 * (exp(-1j*p1*d) * (p2*sin(pd)-1j*p1*cos(pd))) + 1j*p1 ).real / (p1**2-p2**2) )
 		
 		else:
 
@@ -682,13 +847,13 @@ def main():
 
 	n = sqrt(20)
 
-	res = 0.5e3
+	res = 3e3
 	incident_mode = 0
 	pol='TE'
 	polarity = 'even'
 
-	imax = 100
-	p_max = 100
+	imax = 200
+	p_max = 20
 
 	plt.ion()
 	
@@ -763,7 +928,7 @@ def PrettyPlots():
 
 	n = sqrt(20)
 	
-	incident_mode = 1
+	incident_mode = 0
 	pol='TE'
 	polarity = 'even'
 
@@ -798,10 +963,10 @@ def PrettyPlots():
 
 	ax[1].axhline(0, color='k', ls=':')
 
-	ax[0].set_xlim(0.6,1.5)
+	# ax[0].set_xlim(0.6,1.5)
 	ax[0].set_ylim(0,1.1)
 	
-	ax[1].set_ylim(1/6.,2/3.)
+	# ax[1].set_ylim(1/6.,2/3.)
 
 	ax[1].set_xlabel(r'$k_{o}d$')
 
@@ -991,8 +1156,24 @@ def test_draw():
 	plt.ioff()
 	plt.show()
 
+def test_quad():
+
+	kd = 0.628
+
+	n = sqrt(20)
+
+	incident_mode = 0
+	pol='TE'
+	polarity = 'even'
+
+	imax = 100
+
+	RefQuad(kd,n,incident_mode,pol,polarity)
+
+
+
 if __name__ == '__main__':
-  # test_draw()
+  # test_quad()
   # test_beta_marcuse()
   main()
   # PrettyPlots()
