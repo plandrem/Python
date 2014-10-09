@@ -600,16 +600,16 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 
 		if even:
 
-			# Gelin's definition of F, with the sin arguments corrected:
-			I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
-			F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
-					np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I)
-
-			# # Hamid's definition of F, which is apparently actually for TM:
+			# # Gelin's definition of F, with the sin arguments corrected:
 			# I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
 			# F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
-			# 		np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I) + \
-			# 		np.nan_to_num(2 * o1 * (eps-1) * Bt2 * Br1 * sin(od)*cos(pd)/(p1**2-p2**2)/eps) * (1-I)
+			# 		np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I)
+
+			# # Hamid's definition of F, which is apparently actually for TM:
+			I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
+			H   = k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2))
+			Hpp = H.diagonal(0,0,1)
+			Hpp = Hpp.transpose()
 
 			# # This method for F is based on a more direct solution of the field overlap integral, with less
 			# # subsequent algebra:
@@ -622,11 +622,11 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 										 2*(D1 * (exp(-1j*p1*d) * (p2*cos(pd)+1j*p1*sin(pd))) -    p1 ).real / (p1**2-p2**2) )
 		
 
-		# # Handle Cauchy singularities
-		cauchy = pi * Bt2 * Br1 * (D1 + Dstar)
-		idx = np.where(1 - np.isfinite(F))
-		# F[idx] = 0
-		F[idx] = cauchy[idx]
+		# # # Handle Cauchy singularities
+		# cauchy = pi * Bt2 * Br1 * (D1 + Dstar)
+		# idx = np.where(1 - np.isfinite(F))
+		# # F[idx] = 0
+		# F[idx] = cauchy[idx]
 
 
 	if debug:
@@ -709,8 +709,11 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 
 			qr1 = np.tile(qr,(len(p),1,1))
 
-			integral = np.trapz(qr1 * (Bo-Bc1) * F, x=p1, axis=1)
-			# integral = np.sum(qr1 * (Bo-Bc1) * F, axis=1) * dp
+			integrand = qr1 * (Bo-Bc1) * (H-Hpp)/(p1**2-p2**2)
+			idx = np.where(1 - np.isfinite(integrand))
+			integrand[idx]=0
+
+			integral = np.trapz(integrand, x=p1, axis=1) + qr*(Bo-Bc) * pi*Bt*Br*2*np.real(Dr)
 
 			sigma = np.sum([(Bo-Bm[n]) * am[n] * G[n,:] for n in range(N)], axis=0)
 
@@ -723,8 +726,12 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 
 			#Qr
 			qt1 = np.tile(qt,(len(p),1,1))
-			integral = np.trapz(qt1 * (Bc2-Bc1) * F.transpose(1,0,2), x=p1, axis=1)
-			# integral = np.sum(qt1 * (Bc2-Bc1) * F.transpose(1,0,2), axis=1) * dp
+
+			integrand = qt1 * (Bc2-Bc1) * (H.transpose(1,0,2) - Hpp)/(p2**2 - p1**2)
+			idx = np.where(1 - np.isfinite(integrand))
+			integrand[idx]=0
+
+			integral = np.trapz(integrand, x=p1, axis=1)
 			
 			qr = 1/(4*w*mu*P) * (abs(Bc)/Bc) * integral
 
@@ -872,7 +879,7 @@ def main():
 	polarity = 'even'
 
 	imax = 200
-	p_max = 100
+	p_max = 20
 
 	plt.ion()
 	
@@ -1197,8 +1204,8 @@ def convergence_test_single():
 
 	n = sqrt(20)
 
-	res = np.arange(1,30,1) * 1e2
-	p_max = np.arange(5,101,5)
+	res = np.arange(1,15,1) * 1e2
+	p_max = np.arange(5,31,2.5)
 
 	incident_mode = 0
 	pol='TE'
@@ -1276,6 +1283,6 @@ def convergence_test_single():
 if __name__ == '__main__':
   # test_quad()
   # test_beta_marcuse()
-  convergence_test_single()
-  # main()
+  # convergence_test_single()
+  main()
   # PrettyPlots()
