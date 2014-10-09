@@ -8,6 +8,8 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 from scipy.integrate import quadrature as quad
 
 import putil
@@ -259,46 +261,68 @@ def RefQuad(kd,n,incident_mode=0,pol='TE',polarity='even',imax=100,convergence_t
 
 	pmax=100
 
+	# Dictionary of functions
+	dict = {}
+
 	if pol == 'TE':
 
 		# QT			
 
 		def qt(p,recursion_level):
-			print 'qt:', recursion_level
+			# print 'qt:', recursion_level
+			_qr = dict['qr' + str(recursion_level)]
+			_am = dict['am' + str(recursion_level)]
 
 			integrand = lambda P,p: qr(P,recursion_level) * (Bo-Bc(P)) * F(P,p)
 
 			return 1/(2*w*mu*P) * abs(Bc(p)) / (Bo+Bc(p)) * (2*Bo*G(incident_mode,p) \
-				+ sp.integrate.quad(integrand,0,pmax,args=(p,),points=[p])[0] \
+				+ sp.trapz(integrand,0,pmax,args=(p,),points=[p])[0] \
 				+ np.sum([(Bo-Bm[n]) * am(recursion_level)[n] * G(n,p) for n in range(N)]))
 
 		# An
 
 		def am(recursion_level):
-			print 'am:', recursion_level
+			# print 'am:', recursion_level
+			_qt = dict['qt' + str(recursion_level)]
+
 			if recursion_level == 0: return np.zeros(N, dtype=complex)
 			
 			integrand = lambda p,m: qt(p,recursion_level-1) * (Bm[m]-Bc(p)) * G(m,p)
 		
-			return np.array([ 1/(4*w*mu*P) * sp.integrate.quad(integrand,0,pmax,args=(m,))[0] for m in range(N) ])
+			return np.array([ 1/(4*w*mu*P) * sp.trapz(integrand,0,pmax,args=(m,))[0] for m in range(N) ])
 
 
 
 		# QR
 
 		def qr(p,recursion_level):
-			print 'qr:', recursion_level
+			# print 'qr:', recursion_level
+			_qt = dict['qt' + str(recursion_level)]
+
 			if recursion_level == 0: return 0
 
 			integrand = lambda P,p: qt(P,recursion_level-1) * (Bc(p)-Bc(P)) * F(p,P)
 		
-			return 1/(4*w*mu*P) * (abs(Bc(p))/Bc(p)) * sp.integrate.quad(integrand,0,pmax,args=(p,),points=[p])[0]
+			return 1/(4*w*mu*P) * (abs(Bc(p))/Bc(p)) * sp.trapz(integrand,0,pmax,args=(p,),points=[p])[0]
 
 	else: #TM
 		pass
 
 	qt = np.vectorize(qt)
 	qr = np.vectorize(qr)
+
+	for i in range(imax):
+
+		if repeat == False:
+			converged = True
+			break
+
+		print '\nComputing iteration %u of %u' % (i+1,imax)
+
+		dict[qr + str(i)] = qr()
+
+
+
 
 	ps = np.linspace(k,2*k,3)
 	qt(ps,0)
@@ -329,13 +353,6 @@ def RefQuad(kd,n,incident_mode=0,pol='TE',polarity='even',imax=100,convergence_t
 
 	# delta_2prev = delta_prev
 	# delta_prev = np.amax(delta)
-
-
-
-
-
-
-
 
 
 def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
@@ -583,16 +600,16 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 
 		if even:
 
-			# # Gelin's definition of F, with the sin arguments corrected:
-			# I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
-			# F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
-			# 		np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I)
-
-			# Hamid's definition of F:
+			# Gelin's definition of F, with the sin arguments corrected:
 			I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
 			F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
-					np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I) + \
-					np.nan_to_num(2 * o1 * (eps-1) * Bt2 * Br1 * sin(od)*cos(pd)/(p1**2-p2**2)/eps) * (1-I)
+					np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I)
+
+			# # Hamid's definition of F, which is apparently actually for TM:
+			# I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
+			# F = 0*I * pi * Bt2 * Br1 * (D1 + Dstar) - \
+			# 		np.nan_to_num(k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2)) / (p1**2-p2**2)) * (1-I) + \
+			# 		np.nan_to_num(2 * o1 * (eps-1) * Bt2 * Br1 * sin(od)*cos(pd)/(p1**2-p2**2)/eps) * (1-I)
 
 			# # This method for F is based on a more direct solution of the field overlap integral, with less
 			# # subsequent algebra:
@@ -826,7 +843,7 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 	if converged:
 		return am, shouldBeOne[0]
 	else:
-		return np.nan * np.ones(N), [np.nan]
+		return [np.nan * np.ones(N)], [np.nan]
 
 
 
@@ -849,13 +866,13 @@ def main():
 
 	n = sqrt(20)
 
-	res = 3e3
+	res = 0.5e3
 	incident_mode = 0
 	pol='TE'
 	polarity = 'even'
 
 	imax = 200
-	p_max = 20
+	p_max = 100
 
 	plt.ion()
 	
@@ -916,6 +933,7 @@ def main():
 '''
 TODO
 
+plot qt*dp instead of qt when comparing to Gelin figure
 bug when submitting multiple kds - returns nan
 Fix Gelin error equation for odd modes
 mode solver error for odd TE when second mode appears
@@ -982,8 +1000,6 @@ def PrettyPlots():
 
 	plt.tight_layout()
 	plt.show()
-
-
 
 def test_v():
 
@@ -1172,10 +1188,94 @@ def test_quad():
 
 	RefQuad(kd,n,incident_mode,pol,polarity)
 
+def convergence_test_single():
+	'''
+	For a specific value of kd, sweep pmax and pres and plot the result
+	'''
 
+	kd = 0.15
+
+	n = sqrt(20)
+
+	res = np.arange(1,30,1) * 1e2
+	p_max = np.arange(5,101,5)
+
+	incident_mode = 0
+	pol='TE'
+	polarity = 'even'
+
+	imax = 200
+
+	plt.ion()
+
+	fig, ax = plt.subplots(3,figsize=(10,8),sharex=True,sharey=True)
+	plt.show()
+
+	aos = np.zeros((len(res),len(p_max)),dtype=complex) * complex(np.nan,np.nan)
+	accuracy = np.zeros((len(res),len(p_max)),dtype=complex) * complex(np.nan,np.nan)
+
+	mag = ax[0].imshow(abs(aos), aspect='auto')
+	divmag = make_axes_locatable(ax[0])
+	cmag = divmag.append_axes("right", size="1%", pad=0.05)
+	cbarmag = plt.colorbar(mag,cax=cmag,format='%.2f')
+
+	phase = ax[1].imshow(np.angle(aos)/pi, aspect='auto')
+	divphase = make_axes_locatable(ax[1])
+	cphase = divphase.append_axes("right", size="1%", pad=0.05)
+	cbarphase = plt.colorbar(phase,cax=cphase,format='%.2f')
+
+	error = ax[2].imshow(abs(accuracy), aspect='auto')
+	diverror = make_axes_locatable(ax[2])
+	cerror = diverror.append_axes("right", size="1%", pad=0.05)
+	cbarerror = plt.colorbar(error,cax=cerror,format='%.2f')
+
+	ax[2].set_xlabel(r'Max$\{\rho\}$')
+	ax[1].set_ylabel('res')
+
+
+	for i,res_i in enumerate(res):
+		for j,pmax_j in enumerate(p_max):
+
+			a, acc = Reflection(kd,n,
+													pol=pol,
+													polarity=polarity,
+													incident_mode=incident_mode,
+													p_res=res_i,
+													imax=imax,
+													p_max=pmax_j,
+													first_order=False,
+													debug=False
+													)
+
+			try:
+				aos[i,j] = a[0][0]
+				accuracy[i,j] = acc
+			except TypeError:
+				pass
+
+			# |ao|
+			mag.set_data(abs(aos))
+			mag.set_extent(putil.getExtent(p_max,res))
+			mag.autoscale()
+
+			# phase ao
+			phase.set_data(np.angle(aos)/pi)
+			phase.set_extent(putil.getExtent(p_max,res))
+			phase.autoscale()
+
+			# error
+			error.set_data(abs(accuracy))
+			error.set_extent(putil.getExtent(p_max,res))
+			error.autoscale()
+
+			fig.canvas.draw()
+
+	plt.ioff()
+	plt.show()
 
 if __name__ == '__main__':
-  test_quad()
+  # test_quad()
   # test_beta_marcuse()
+  convergence_test_single()
   # main()
   # PrettyPlots()
