@@ -26,45 +26,72 @@ plt.rcParams['image.interpolation'] = 'nearest'
 
 def main():
 
-	wl = 400
-	d = 100
+	'''
+	Complex slab mode solver based on "Exact Solution To Guided Wave Propagation in Lossy Films" by Nagel et al,
+	Optics Express 2011
 
-	n = 4 - 10j
+	Currently supports TE even modes only.
+	'''
 
+	hlam = 0.5
+
+	nf = 2 + 0.5j
+	nc = 1.5
+
+	wl = 1
+	h = hlam*wl
 	k = 2*pi/wl
-	kappa_r = np.linspace(0,abs(n)*k,50)
-	kappa_i = np.linspace(0,abs(n)*k/20,50)
+	kf = nf*k
+	kc = nc*k
 
-	KR,KI = np.meshgrid(kappa_r,kappa_i)
+	def f(kx):
+		return kx*tan(kx * h) - sqrt(kf**2 - kc**2 - kx**2)
 
-	kappa = KR - 1j*KI
+	def phi(wavevectors):
+		a,b = wavevectors
+		kx = b + 1j*a
+		return np.real(f(kx)*f(kx).conj())
 
-	gamma = lambda x: sqrt((n*k)**2 - x**2 - k**2)
+	def phiPlotter(kx):
+		return np.real(10*sp.log10(f(kx)*f(kx).conj()))
+
+	phiPlotter = np.vectorize(phiPlotter)
+
+	# Find minimum residual near initial guess. Returns OptimizeResult object
+	res = sp.optimize.minimize(phi,[0,7.5])
 	
-	pol = 'TE'
-	C = n**2 if pol == 'TM' else 1.
+	if res.success:
+		ax_min, bx_min = res.x
+	else:
+		print 'Minimize fail.'
+		exit()
 
-	trans = lambda K: tan(K * d) - C * gamma(K)/K
+	kx_min = bx_min + 1j*ax_min
 
-	T = trans(kappa)
+	# Find corresponding Beta (from equation A4)
+	B = sqrt(kf**2-kx_min**2)
+	print B
 
-	# T[np.where(np.isinf(T))] = 0
+	# Pretty picture
 
-	print T
+	a = np.linspace(-1.5,1.5,100)
+	b = np.linspace(0,10,100)
 
-	ext = np.array(putil.getExtent(kappa_r,kappa_i)) * d/pi
+	A,B = np.meshgrid(a,b)
+
+	kx = B+1j*A
+
+	ext = np.array(putil.getExtent(b,a))
 	asp = 'auto'
-	
-	fig, ax = plt.subplots(3,figsize=(15,9))
-	imr = ax[0].imshow(T.real,extent=ext,vmin=-400,vmax=400, aspect=asp)
-	imi = ax[1].imshow(T.imag,extent=ext, aspect=asp)
-	ima = ax[2].imshow(abs(T),extent=ext, aspect=asp, vmax=100)
 
-	# plt.figure()
-	# plt.imshow(abs(tan(kappa*d)))
+	plt.figure()
+	plt.imshow(phiPlotter(kx).transpose(),extent=ext, vmax=40, vmin=-20, aspect=asp)
+	plt.colorbar()
+	plt.xlabel(r'$\beta_{x} \lambda_{o}$')
+	plt.ylabel(r'$\alpha_{x}\lambda_{o}$')
 
 	# Beta(n,d,wl=wl,pol=pol,polarity='even',Nmodes=None,plot=True)
-	fig.colorbar(ima)
+	# fig.colorbar(ima)
 	plt.show()
 
 
