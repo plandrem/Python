@@ -354,7 +354,6 @@ def RefQuad(kd,n,incident_mode=0,pol='TE',polarity='even',imax=100,convergence_t
 	# delta_2prev = delta_prev
 	# delta_prev = np.amax(delta)
 
-
 def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 	p_max=20,p_res=1e3,imax=100,convergence_threshold=1e-5,first_order=False, debug=False):
 	'''
@@ -607,9 +606,19 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 
 			# # Hamid's definition of F, which is apparently actually for TM:
 			I = np.tile(np.eye(len(p)), (Nds,1,1)).transpose(1,2,0)
-			H   = k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2))
+			H   = -k**2 * (eps-1) * Bt2 * Br1 * (sin((o1+p2)*d)/(o1+p2) + sin((o1-p2)*d)/(o1-p2))
 			Hpp = H.diagonal(0,0,1)
 			Hpp = Hpp.transpose()
+
+			plt.ioff()
+			plt.figure()
+			plt.imshow(abs(H[:,:,0]-Hpp))
+			plt.colorbar()
+			plt.figure()
+			plt.imshow(np.real(H[:,:,0]-Hpp))
+			plt.colorbar()
+			plt.show()
+			exit()
 
 			# # This method for F is based on a more direct solution of the field overlap integral, with less
 			# # subsequent algebra:
@@ -851,9 +860,6 @@ def Reflection(kd,n,incident_mode=0,pol='TE',polarity='even',
 		return am, shouldBeOne[0]
 	else:
 		return [np.nan * np.ones(N)], [np.nan]
-
-
-
 
 def main():
 
@@ -1280,9 +1286,82 @@ def convergence_test_single():
 	plt.ioff()
 	plt.show()
 
+def ReflectionWithHamidsCorrections():
+
+	'''
+	Major code refactor for cleanliness. TE even modes only.
+	'''
+
+	debug = True
+
+	kd = 1.
+	n = sqrt(20)
+	m = 0 				# incident mode order
+
+	# constants
+	wl = 10. # Set to 10 to match Gelin values for qt
+	k = 2*pi/wl
+	d = kd/k
+	w = c*k
+	eps = n**2
+
+	# Solve slab for all modes
+	N = numModes(n,1,kd)
+	B = beta_marcuse(n,d,wl=wl,pol='TE',polarity='even',Nmodes=N,plot=False)
+
+	# Define Wavevectors
+	g  = sqrt(      -k**2 + B**2)						# transverse wavevectors in air for guided modes
+	K  = sqrt(n**2 * k**2 - B**2)						# transverse wavevectors in high-index region for guided modes
+
+	Bc = lambda p: sqrt(k**2 - p**2)
+	o  = lambda p: sqrt((n*k)**2 - Bc(p)**2)
+
+	# Mode Amplitude Coefficients
+	P = 1
+
+	A = sqrt(2*w*mu*P / (B*d + B/g)) # Tested for both even and odd
+
+	Bt = lambda p: sqrt(2*w*mu*P / (pi*abs(Bc(p))))
+	Br = lambda p: sqrt(2*p**2*w*mu*P / (pi*abs(Bc(p))*(p**2*cos(o(p)*d)**2 + o(p)**2*sin(o(p)*d)**2)))
+	Dr = lambda p: 1/2. * exp(1j*p*d) * (cos(o(p)*d) - 1j*o(p)/p * sin(o(p)*d))
+
+	# Define Helper functions for integrals
+
+	G = lambda m,p: 2 * k**2 * (eps-1) * A[m] * Bt(p) * cos(K[m]*d) * (g[m]*cos(p*d) - p*sin(p*d)) / ((K[m]**2 - p**2)*(g[m]**2 + p**2))
+
+	def H(q,P,p):
+		'''
+		q is a placeholder for either qt or qr, which will be redefined on each iteration. Note that q needs to be provided
+		as an array of values to avoid recursion.
+		'''
+		od = o(P)
+		pd = p*d
+
+		return -q * (B[m] - Bc(P)) * k**2 * (eps-1) * Bt(p) * Br(P) * (  sin( (o(P)+p) *d)/(o(P)+p)  +  sin( (o(P)-p) *d)/(o(P)-p)  )
+
+
+	# Define mesh of p values
+	pmax = 20*k
+	pres = 10
+	p = np.linspace(1e-15,pmax,pres)
+
+	p1,p2 = np.meshgrid(p,p)
+
+	# Test Helper Function evaluation on array objects
+	# Works without vectorization for single kd input
+	if debug:
+		print 'G'
+		print G(0,p)
+		print '\nH'
+		print H(p,p1,p2)
+
+	
+
+
 if __name__ == '__main__':
+	ReflectionWithHamidsCorrections()
   # test_quad()
   # test_beta_marcuse()
   # convergence_test_single()
-  main()
+  # main()
   # PrettyPlots()

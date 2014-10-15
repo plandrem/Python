@@ -66,9 +66,14 @@ def main():
 	'''
 
 	# Generate residue for complex plane
+	kmax = abs(kf)
+	kres = 100
+	a = np.linspace(0,  kmax/2, kres)
+	b = np.linspace(0,  2*kmax  , kres)
 
-	a = np.linspace(-1.5,1.5,20)
-	b = np.linspace(0,10,20)
+	## Use to match Fig 2 from paper
+	# a = np.linspace(-1.5,1.5,20)
+	# b = np.linspace(0,10,20)
 
 	B,A = np.meshgrid(b,a)
 
