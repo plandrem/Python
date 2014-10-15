@@ -23,7 +23,7 @@ from scipy import sin, cos, exp, tan, arctan, arcsin, arccos
 
 prop = mpl.font_manager.FontProperties(fname='/Library/Fonts/GillSans.ttc')
 
-np.set_printoptions(linewidth=150, precision=8)
+np.set_printoptions(linewidth=150, precision=3)
 
 pi = sp.pi
 sqrt = sp.emath.sqrt
@@ -1332,7 +1332,7 @@ def ReflectionWithHamidsCorrections():
 	def H(q,P,p):
 		'''
 		q is a placeholder for either qt or qr, which will be redefined on each iteration. Note that q needs to be provided
-		as an array of values to avoid recursion.
+		as an array of values, rather than a function, to avoid recursion.
 		'''
 		od = o(P)
 		pd = p*d
@@ -1342,21 +1342,63 @@ def ReflectionWithHamidsCorrections():
 
 	# Define mesh of p values
 	pmax = 20*k
-	pres = 10
+	pres = 3
 	p = np.linspace(1e-15,pmax,pres)
 
-	p1,p2 = np.meshgrid(p,p)
+	'''
+	2D mesh of p values for performing integration with matrices. Rows correspond to
+	the value of p', columns to p (for H(p',p)).
+
+	Ex. H(p',p)[3,2] chooses the value of H with the 4th value of p' and the 3rd value of p.
+
+	Integrating over p' would then amount to summing over axis=0. This sums the rows of the matrix H, producing 
+	a row vector representing a function of p.
+	'''
+	p2,p1 = np.meshgrid(p,p) 
 
 	# Test Helper Function evaluation on array objects
 	# Works without vectorization for single kd input
 	if debug:
-		print 'G'
+
+		print 'Test axes of matrices - p1 should change with row (1st index):'
+		print 'p1[0,0]:', p1[0,0]
+		print 'p1[1,0]:', p1[1,0]
+		print 'p1[0,1]:', p1[0,1]
+
+		print '\nG'
 		print G(0,p)
+		print '\np1'
+		print p1
+		print '\np2'
+		print p2
 		print '\nH'
-		print H(p,p1,p2)
+		print H(1,p1,p2)
+		print '\nHpp'
+		print H(1,p2,p2)
 
+	# Define initial states for an, qr
+	a = np.zeros(N, dtype=complex)
+	qr = np.zeros(pres, dtype=complex)
+
+	# TODO - process the lead terms before looping, since they are independent of the iteration
 	
+	integrand = (H(1,p1,p2) - H(1,p2,p2))/(p1**2 - p2**2) # blows up at p1=p2
+	idx = np.where(np.eye(pres))														# create indexer for all points where p1=p2 (main diagonal)
+	integrand[idx] = 0 																			# set those points to some value (consider the average of the adjacent H values)
+	
+	if debug:
+		print integrand
+		print np.trapz(integrand,dx=1, axis=0)
+	
+	qt = 1/(2*w*mu*P) * abs(Bc(p))/(B[m]+Bc(p)) * ( \
+		2*B[m]*G(m,p) \
+		+ np.sum([  (B[m]+B[k])*a[k]*G(k,p) for k in range(N) ]) \
+		+ np.trapz(integrand, x=p, axis=0) \
+		+ qr * (B[m]-Bc(p)) * pi * Bt(p)*Br(p)*2*np.real(Dr(p))
+		)
 
+	print qt
+	
 
 if __name__ == '__main__':
 	ReflectionWithHamidsCorrections()
