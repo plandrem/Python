@@ -879,13 +879,13 @@ def main():
 
 	n = sqrt(20)
 
-	res = 0.5e3
+	res = 100
 	incident_mode = 0
 	pol='TE'
 	polarity = 'even'
 
 	imax = 200
-	p_max = 20
+	p_max = 10
 
 	plt.ion()
 	
@@ -897,20 +897,22 @@ def main():
 	ams = []
 	accuracy = []
 
+	method = ReflectionWithHamidsCorrections
+
 	for kdi,kd in enumerate(kds):
 
 		print '\nkd:', kd
 
-		a, acc = Reflection(kd,n,
-												pol=pol,
-												polarity=polarity,
-												incident_mode=incident_mode,
-												p_res=res,
-												imax=imax,
-												p_max=p_max,
-												first_order=False,
-												debug=False
-												)
+		a, acc = method(kd,n,
+										pol=pol,
+										polarity=polarity,
+										incident_mode=incident_mode,
+										p_res=res,
+										imax=imax,
+										p_max=p_max,
+										first_order=False,
+										debug=False
+										)
 
 		ams.append(a)
 		accuracy.append(np.abs(acc))
@@ -1286,17 +1288,32 @@ def convergence_test_single():
 	plt.ioff()
 	plt.show()
 
-def ReflectionWithHamidsCorrections():
+def smoothMatrix(M):
+	'''
+	Helper function for Reflection. Takes integrand matrix, M, and for each point on the main
+	diagonal sets the average of the two adjacent indices on axis 0.
+
+	M must be square
+	'''
+	N = len(M[:,0])
+
+	for n in range(N):
+		if n==0: M[n,n] = M[n+1,n]
+		elif n > 0 and n < N-1: M[n,n] = (M[n+1,n] + M[n-1,n]) / 2.
+		elif n==N-1: M[n,n] = M[n-1,n]
+	
+	return M
+
+def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even',
+	p_max=20,p_res=1e3,imax=100,convergence_threshold=1e-5,first_order=False, debug=False):
 
 	'''
 	Major code refactor for cleanliness. TE even modes only.
 	'''
 
-	debug = True
+	debug = False
 
-	kd = 1.
-	n = sqrt(20)
-	m = 0 				# incident mode order
+	m = incident_mode
 
 	# constants
 	wl = 10. # Set to 10 to match Gelin values for qt
@@ -1323,27 +1340,33 @@ def ReflectionWithHamidsCorrections():
 
 	Bt = lambda p: sqrt(2*w*mu*P / (pi*abs(Bc(p))))
 	Br = lambda p: sqrt(2*p**2*w*mu*P / (pi*abs(Bc(p))*(p**2*cos(o(p)*d)**2 + o(p)**2*sin(o(p)*d)**2)))
-	Dr = lambda p: 1/2. * exp(1j*p*d) * (cos(o(p)*d) - 1j*o(p)/p * sin(o(p)*d))
+	Dr = lambda p: 1/2. * exp(-1j*p*d) * (cos(o(p)*d) + 1j*o(p)/p * sin(o(p)*d))
 
 	# Define Helper functions for integrals
 
 	G = lambda m,p: 2 * k**2 * (eps-1) * A[m] * Bt(p) * cos(K[m]*d) * (g[m]*cos(p*d) - p*sin(p*d)) / ((K[m]**2 - p**2)*(g[m]**2 + p**2))
 
-	def H(q,P,p):
-		'''
-		q is a placeholder for either qt or qr, which will be redefined on each iteration. Note that q needs to be provided
-		as an array of values, rather than a function, to avoid recursion.
-		'''
-		od = o(P)
-		pd = p*d
+	def Ht(qr,a,b):
 
-		return -q * (B[m] - Bc(P)) * k**2 * (eps-1) * Bt(p) * Br(P) * (  sin( (o(P)+p) *d)/(o(P)+p)  +  sin( (o(P)-p) *d)/(o(P)-p)  )
+		'''
+		qr is taken in as simply qr(p). To correspond to qr(p') in this 2D matrix formulation, it needs
+		to be reshaped into a 2D matrix, whose values are dependent by row (0th axis), but not by column.
+		'''
+		qr = np.tile(qr,(pres,1)).transpose()
+
+		return -qr * (B[m] - Bc(a)) * k**2 * (eps-1) * Bt(b) * Br(a) * (  sin( (o(a)+b) *d)/(o(a)+b)  +  sin( (o(a)-b) *d)/(o(a)-b)  )
+
+	def Hr(qt,a,b):
+
+		qt = np.tile(qt,(pres,1)).transpose()
+
+		return -qt * (Bc(b) - Bc(a)) * k**2 * (eps-1) * Bt(b) * Br(a) * (  sin( (o(a)+b) *d)/(o(a)+b)  +  sin( (o(a)-b) *d)/(o(a)-b)  )
 
 
 	# Define mesh of p values
-	pmax = 20*k
-	pres = 3
-	p = np.linspace(1e-15,pmax,pres)
+	pmax = p_max*k
+	pres = p_res
+	p = np.linspace(1e-9,pmax,pres)
 
 	'''
 	2D mesh of p values for performing integration with matrices. Rows correspond to
@@ -1380,30 +1403,96 @@ def ReflectionWithHamidsCorrections():
 	a = np.zeros(N, dtype=complex)
 	qr = np.zeros(pres, dtype=complex)
 
-	# TODO - process the lead terms before looping, since they are independent of the iteration
-	
-	integrand = (H(1,p1,p2) - H(1,p2,p2))/(p1**2 - p2**2) # blows up at p1=p2
-	idx = np.where(np.eye(pres))														# create indexer for all points where p1=p2 (main diagonal)
-	integrand[idx] = 0 																			# set those points to some value (consider the average of the adjacent H values)
-	
-	if debug:
-		print integrand
-		print np.trapz(integrand,dx=1, axis=0)
-	
-	qt = 1/(2*w*mu*P) * abs(Bc(p))/(B[m]+Bc(p)) * ( \
-		2*B[m]*G(m,p) \
-		+ np.sum([  (B[m]+B[k])*a[k]*G(k,p) for k in range(N) ]) \
-		+ np.trapz(integrand, x=p, axis=0) \
-		+ qr * (B[m]-Bc(p)) * pi * Bt(p)*Br(p)*2*np.real(Dr(p))
-		)
+	'''
+	Iteratively define qt,a,qr until the value of a converges to within some threshold.
+	'''
+	repeat = True
+	converged = False
+	delta_prev = delta_2prev = np.inf
 
-	print qt
-	
+	for i in range(imax):
+		print '\nComputing iteration %u of %u' % (i+1,imax)
+
+		if not repeat:
+			break
+
+		# TODO - process the lead terms before looping, since they are independent of the iteration
+		
+		integrand = (Ht(qr,p1,p2) - Ht(qr,p2,p2))/(p1**2 - p2**2) # blows up at p1=p2
+		integrand = smoothMatrix(integrand)											# elminate singular points by using average of nearest neighbors.
+
+		if debug:
+			print integrand
+			print np.trapz(integrand,dx=1, axis=0)
+		
+		# if i == 3:
+		# 	# plt.plot(p/k,integrand[250,:])
+		# 	print sp.log10(abs(integrand[250,0]))
+		# 	print sp.log10(abs(integrand[250,1]))
+		# 	plt.imshow(sp.log10(abs(integrand)), extent = putil.getExtent(p/k,p/k))
+		# 	plt.colorbar()
+		# 	plt.show()
+		# 	exit()
+
+		qt = 1/(2*w*mu*P) * abs(Bc(p))/(B[m]+Bc(p)) * ( \
+			2*B[m]*G(m,p) \
+			+ np.sum([  (B[m]-B[j])*a[j]*G(j,p) for j in range(N) ]) \
+			+ np.trapz(integrand, x=p, axis=0) \
+			+ qr * (B[m]-Bc(p)) * pi * Bt(p)*Br(p)*2*np.real(Dr(p))
+			)
+
+		a_prev = a
+		a = [1/(4*w*mu*P) * np.trapz(qt * (B[j]-Bc(p)) * G(j,p), x=p) for j in range(N)]; a = np.array(a);
+
+		integrand = (Hr(qt,p2,p1) - Hr(qt,p2,p2))/(p2**2 - p1**2) # blows up at p1=p2
+		integrand = smoothMatrix(integrand)
+
+
+		qr = 1/(4*w*mu*P) * abs(Bc(p))/Bc(p) * np.trapz(integrand, x=p, axis=0)
+
+		# Test for convergence
+		delta = abs(a_prev-a)
+		print 'Delta a:', np.amax(delta)
+		if not np.any(delta > convergence_threshold):
+		 repeat = False
+		 converged = True			
+
+		# if difference in am has been rising for 2 iterations, value is diverging. Bail.
+
+		if np.amax(delta) > delta_prev and delta_prev > delta_2prev: break
+
+		delta_2prev = delta_prev
+		delta_prev = np.amax(delta)
+
+
+	'''
+	Loop completed. Perform Error tests
+	'''
+
+	shouldBeOne = 1/(4*w*mu*P) * np.trapz(qt*(B[m]+Bc(p))*G(m,p), x=p)
+
+	'''
+	Output results
+	'''
+
+	print "\n--- Outputs ---"
+	if debug:
+		print '|a|:', abs(a)
+		print '<a:', np.angle(a)
+		print 'shouldBeOne:', shouldBeOne
+
+	if converged:
+		return a, np.array(shouldBeOne)
+	else:
+		return a * np.nan, np.array(np.nan)
+
+
 
 if __name__ == '__main__':
-	ReflectionWithHamidsCorrections()
+	# ReflectionWithHamidsCorrections(0.0242424252323,sqrt(20),p_res=500,p_max=5)
   # test_quad()
   # test_beta_marcuse()
   # convergence_test_single()
-  # main()
+  main()
   # PrettyPlots()
+	# dummy()

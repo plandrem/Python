@@ -240,6 +240,7 @@ def loadAbajoData(material,units='wl'):
 		'co'   :'abajo_cobalt_jc.dat',
 		'pt'   :'abajo_platinum.dat',
 		'aSi'   :'abajo_aSi_palik.dat',
+		'si'   :'abajo_Si_Aspnes1983.dat',
 		'al2o3':'abajo_alumina_palik.dat'
 	}
 
@@ -292,6 +293,7 @@ def getEps(material,wl):
 		'pt':loadAbajoData,
 		'al2o3':loadAbajoData,
 		'aSi':loadAbajoData,
+		'si':loadAbajoData,
 
 		'a-gete':loadEpsDatathief,
 		'c-gete':loadEpsDatathief,
