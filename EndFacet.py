@@ -1437,6 +1437,7 @@ def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even
 		qt = 1/(2*w*mu*P) * abs(Bc(p))/(B[m]+Bc(p)) * ( \
 			2*B[m]*G(m,p) \
 			+ np.sum([  (B[m]-B[j])*a[j]*G(j,p) for j in range(N) ]) \
+			# + sp.integrate.quad(integrand, x=p, axis=0) \
 			+ np.trapz(integrand, x=p, axis=0) \
 			+ qr * (B[m]-Bc(p)) * pi * Bt(p)*Br(p)*2*np.real(Dr(p))
 			)
