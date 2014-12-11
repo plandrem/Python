@@ -879,7 +879,7 @@ def main():
 
 	n = sqrt(20)
 
-	res = 300
+	res = 100
 	incident_mode = 0
 	pol='TE'
 	polarity = 'even'
@@ -1352,13 +1352,13 @@ def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even
 		qr is taken in as simply qr(p). To correspond to qr(p') in this 2D matrix formulation, it needs
 		to be reshaped into a 2D matrix, whose values are dependent by row (0th axis), but not by column.
 		'''
-		qr = np.tile(qr,(pres,1)).transpose()
+		qr = np.tile(qr,(len(qr),1)).transpose()
 
 		return -qr * (B[m] - Bc(a)) * k**2 * (eps-1) * Bt(b) * Br(a) * (  sin( (o(a)+b) *d)/(o(a)+b)  +  sin( (o(a)-b) *d)/(o(a)-b)  )
 
 	def Hr(qt,a,b):
 
-		qt = np.tile(qt,(pres,1)).transpose()
+		qt = np.tile(qt,(len(qr),1)).transpose()
 
 		return -qt * (Bc(b) - Bc(a)) * k**2 * (eps-1) * Bt(b) * Br(a) * (  sin( (o(a)+b) *d)/(o(a)+b)  +  sin( (o(a)-b) *d)/(o(a)-b)  )
 
@@ -1366,7 +1366,16 @@ def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even
 	# Define mesh of p values
 	pmax = p_max*k
 	pres = p_res
-	p = np.linspace(1e-3,pmax,pres)
+	# p = np.linspace(1e-3,pmax,pres)
+
+	# try using a higher resolution near the singularity
+	eps_k = 1e-3
+	sing_res = 100
+	p_l = np.linspace(1e-3,k-eps_k,pres/2.)
+	p_sing = np.linspace(k-eps_k,k+eps_k,sing_res)	
+	p_r = np.linspace(k+eps_k,pmax,pres/2.)
+
+	p = np.concatenate((p_l,p_sing,p_r))
 
 	'''
 	2D mesh of p values for performing integration with matrices. Rows correspond to
@@ -1401,7 +1410,7 @@ def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even
 
 	# Define initial states for an, qr
 	a = np.zeros(N, dtype=complex)
-	qr = np.zeros(pres, dtype=complex)
+	qr = np.zeros(len(p), dtype=complex)
 
 	'''
 	Iteratively define qt,a,qr until the value of a converges to within some threshold.
@@ -1455,22 +1464,22 @@ def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even
 		integrand = (Hr(qt,p2,p1) - Hr(qt,p2,p2))/(p2**2 - p1**2) # blows up at p1=p2
 		integrand = smoothMatrix(integrand)
 
-		if i == 2:
-			plt.ioff()
-			plt.figure()
+		# if i == 0:
+		# 	plt.ioff()
+		# 	plt.figure()
 
-			plt.plot(p/k,abs(integrand[0,:]),'r')
-			plt.plot(p/k,abs(integrand[:,0]),'b')
-			plt.plot(p/k, Br(p),'g')
+		# 	plt.plot(p/k,abs(integrand[0,:]),'r')
+		# 	plt.plot(p/k,abs(integrand[:,0]),'b')
+		# 	plt.plot(p/k, Br(p),'g')
 
-			plt.figure()
-			# print sp.log10(abs(integrand[250,0]))
-			# print sp.log10(abs(integrand[250,1]))
-			# plt.imshow(sp.log10(abs(Ht(qr,p1,p2))), extent = putil.getExtent(p/k,p/k))
-			plt.imshow(sp.log10(abs(integrand)), extent = putil.getExtent(p/k,p/k))
-			plt.colorbar()
-			plt.show()
-			exit()
+		# 	plt.figure()
+		# 	# print sp.log10(abs(integrand[250,0]))
+		# 	# print sp.log10(abs(integrand[250,1]))
+		# 	# plt.imshow(sp.log10(abs(Ht(qr,p1,p2))), extent = putil.getExtent(p/k,p/k))
+		# 	plt.imshow(sp.log10(abs(integrand)), extent = putil.getExtent(p/k,p/k))
+		# 	plt.colorbar()
+		# 	plt.show()
+		# 	exit()
 
 		qr = 1/(4*w*mu*P) * abs(Bc(p))/Bc(p) * np.trapz(integrand, x=p, axis=0)
 
