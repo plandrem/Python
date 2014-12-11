@@ -873,13 +873,13 @@ def main():
 	# To convert into the d = h/wl notation for dielectricSlab, use:
 	# kd = d*pi/n
 
-	kds = np.linspace(1e-9,2.4,100)
+	kds = np.linspace(0.72,2.4,100)
 	# kds = np.linspace(0.1,0.5,50)
 	# kds = np.linspace(1e-15,3,50)
 
 	n = sqrt(20)
 
-	res = 100
+	res = 300
 	incident_mode = 0
 	pol='TE'
 	polarity = 'even'
@@ -1366,7 +1366,7 @@ def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even
 	# Define mesh of p values
 	pmax = p_max*k
 	pres = p_res
-	p = np.linspace(1e-9,pmax,pres)
+	p = np.linspace(1e-3,pmax,pres)
 
 	'''
 	2D mesh of p values for performing integration with matrices. Rows correspond to
@@ -1425,10 +1425,17 @@ def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even
 			print integrand
 			print np.trapz(integrand,dx=1, axis=0)
 		
-		# if i == 3:
-		# 	# plt.plot(p/k,integrand[250,:])
-		# 	print sp.log10(abs(integrand[250,0]))
-		# 	print sp.log10(abs(integrand[250,1]))
+		# if i == 1:
+		# 	plt.ioff()
+		# 	plt.figure()
+
+		# 	plt.plot(p/k,abs(integrand[0,:]),'r')
+		# 	plt.plot(p/k,abs(integrand[:,0]),'b')
+
+		# 	plt.figure()
+		# 	# print sp.log10(abs(integrand[250,0]))
+		# 	# print sp.log10(abs(integrand[250,1]))
+		# 	# plt.imshow(sp.log10(abs(Ht(qr,p1,p2))), extent = putil.getExtent(p/k,p/k))
 		# 	plt.imshow(sp.log10(abs(integrand)), extent = putil.getExtent(p/k,p/k))
 		# 	plt.colorbar()
 		# 	plt.show()
@@ -1448,6 +1455,22 @@ def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even
 		integrand = (Hr(qt,p2,p1) - Hr(qt,p2,p2))/(p2**2 - p1**2) # blows up at p1=p2
 		integrand = smoothMatrix(integrand)
 
+		if i == 2:
+			plt.ioff()
+			plt.figure()
+
+			plt.plot(p/k,abs(integrand[0,:]),'r')
+			plt.plot(p/k,abs(integrand[:,0]),'b')
+			plt.plot(p/k, Br(p),'g')
+
+			plt.figure()
+			# print sp.log10(abs(integrand[250,0]))
+			# print sp.log10(abs(integrand[250,1]))
+			# plt.imshow(sp.log10(abs(Ht(qr,p1,p2))), extent = putil.getExtent(p/k,p/k))
+			plt.imshow(sp.log10(abs(integrand)), extent = putil.getExtent(p/k,p/k))
+			plt.colorbar()
+			plt.show()
+			exit()
 
 		qr = 1/(4*w*mu*P) * abs(Bc(p))/Bc(p) * np.trapz(integrand, x=p, axis=0)
 
