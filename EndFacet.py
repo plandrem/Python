@@ -16,6 +16,7 @@ import putil
 import sys
 import os
 import time
+import Chebyshev as cheb
 
 # import pudb; pu.db
 
@@ -78,17 +79,25 @@ def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 	
 	C = n**2 if pol == 'TM' else 1.
 
+	# if even:
+	# 	trans = lambda K: tan(K * d) - C   * (gamma(K)/K)
+	# else:
+	# 	trans = lambda K: tan(K * d) + 1/C * (K/gamma(K))
+
 	if even:
 		trans = lambda K: tan(K * d) - C * np.real(gamma(K)/K)
 	else:
 		trans = lambda K: tan(K * d) + 1/C * np.real(K/gamma(K).real)
 
+
 	# Find zero crossings, then use the brentq method to find the precise zero crossing 
 	# between the two nearest points in the array
 
-	diff = np.diff(np.sign(trans(kappa)))
-
 	Ks = np.array([])
+
+	'''
+
+	diff = np.diff(np.sign(trans(kappa)))
 
 	# need to accept alternating zero crossings - the true modes alternate with infinite discontinuites of the tangent function
 	toggle = True
@@ -99,15 +108,35 @@ def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 			k_high = kappa[idx+1]
 
 			try:
-				Ks = np.append(Ks, sp.optimize.brentq(trans,k_low,k_high))
+				k_true = sp.optimize.brentq(trans,k_low,k_high)
 			except:
 				print 'BrentQ Failed. Plotting Transcendental function...'
 				print 'Zero Crossing: (%.3f)' % kappa[idx] * d/pi
 				print 'Attempted values of Kd/pi: (%.3f, %.3f)' % (k_low*d/pi, k_high*d/pi)
 				print 'Function evaluates to (%.3f, %.3f)' % (trans(k_low),trans(k_high))
+				k_true = np.nan
 				plot=True
 
+
+			print abs(trans(k_true))
+			Ks = np.append(Ks, k_true)
+			# if abs(trans(k_true)) < 1e-9: Ks = np.append(Ks, k_true)
+
 		toggle = not toggle
+
+	'''
+
+	# set markers for the k values where tan(kd) becomes discontinuous:
+	# kd = (n + 1/2)*pi
+	N = numModes(n,1,k*d,polarity=polarity)
+	bounds = [(n+0.5)*pi/d for n in range(N)]
+	bounds.insert(0,0)
+	bounds_eps = 1e-15
+
+	for j in range(N):
+		k_zeroCrossing = sp.optimize.brentq(trans,bounds[j]+bounds_eps,bounds[j+1]-bounds_eps)
+		Ks = np.append(Ks,k_zeroCrossing)
+
 
 	Bs = sqrt((n*k)**2 - Ks**2)
 
@@ -124,22 +153,25 @@ def beta_marcuse(n,d,wl=1.,pol='TM',polarity='even',Nmodes=None,plot=False):
 
 		plt.ioff()
 
-		print 'Number of modes:', Nmodes
+		# print 'Number of modes:', Nmodes
 		print Ks*d/pi
-		print 'Zero Crossings:', kappa[np.nonzero(diff)[0]] * d/pi
+		# print 'Zero Crossings:', kappa[np.nonzero(diff)[0]] * d/pi
 
 		plt.figure()
 
-		plt.plot(kappa*d/pi, tan(kappa*d))
+		plt.plot(kappa*d/pi, tan(kappa*d),'b')
 
 		if even:
-			plt.plot(kappa*d/pi, C * sqrt(n**2*k**2 - kappa**2 - k**2)/kappa)
+			plt.plot(kappa*d/pi, C * sqrt(n**2*k**2 - kappa**2 - k**2)/kappa,'g')
 		else:
-			plt.plot(kappa*d/pi, 1/C * (-kappa)/gamma(kappa).real)
+			plt.plot(kappa*d/pi, 1/C * (-kappa)/gamma(kappa).real,'g')
 			# plt.plot(kappa*d/pi, 1/C * (-kappa)/sqrt(n**2*k**2 - kappa**2 - k**2))
 
-		plt.plot(kappa*d/pi, trans(kappa))
+		plt.plot(kappa*d/pi, trans(kappa),'r')
 		plt.plot(kappa*d/pi, np.sign(trans(kappa)), 'k:')
+
+		for j in range(N):
+			plt.axvline(Ks[j]*d/pi)
 
 		plt.xlabel(r'$\kappa d/\pi$')
 		plt.axhline(0, c='k')
@@ -173,6 +205,19 @@ def test_beta_marcuse():
 	for i,d in enumerate(ds):
 		bTM = beta_marcuse(n,d,pol='TM',wl=wl)[0]
 		print "%.5f, %.5f, %.5f" % (bTM * d, target_vals_TM[i], abs((bTM * d - target_vals_TM[i]) / target_vals_TM[i]))
+
+def test_beta_marcuse_hamid():
+	wl = 1
+	n = 1.432
+	k = 2*pi/wl
+	kd = 13
+	d = kd/k
+
+	B = beta_marcuse(n,d,pol='TE',wl=wl,plot=True)
+	print "should have %u modes" % numModes(n,1,kd,polarity='even')
+	print "code finds %u modes." % len(B)
+	print '\n' + str(B)
+
 
 def numModes(ncore,nclad,kd, polarity='even'):
 	# See Marcuse, Light Transmission Optics, p. 310 for graphical origin
@@ -873,13 +918,13 @@ def main():
 	# To convert into the d = h/wl notation for dielectricSlab, use:
 	# kd = d*pi/n
 
-	kds = np.linspace(0.72,2.4,100)
+	kds = np.linspace(0.6,2.4,100)
 	# kds = np.linspace(0.1,0.5,50)
 	# kds = np.linspace(1e-15,3,50)
 
 	n = sqrt(20)
 
-	res = 100
+	res = 200
 	incident_mode = 0
 	pol='TE'
 	polarity = 'even'
@@ -1305,7 +1350,7 @@ def smoothMatrix(M):
 	return M
 
 def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even',
-	p_max=20,p_res=1e3,imax=100,convergence_threshold=1e-5,first_order=False, debug=False):
+	p_max=20,p_res=1e3,imax=100,convergence_threshold=1e-5,first_order=False, debug=False, returnMode = None, returnItr = 0):
 
 	'''
 	Major code refactor for cleanliness. TE even modes only.
@@ -1366,16 +1411,29 @@ def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even
 	# Define mesh of p values
 	pmax = p_max*k
 	pres = p_res
-	# p = np.linspace(1e-3,pmax,pres)
+	p = np.linspace(1e-3,pmax,pres)
+
+
 
 	# try using a higher resolution near the singularity
-	eps_k = 1e-3
-	sing_res = 100
-	p_l = np.linspace(1e-3,k-eps_k,pres/2.)
-	p_sing = np.linspace(k-eps_k,k+eps_k,sing_res)	
-	p_r = np.linspace(k+eps_k,pmax,pres/2.)
+	# eps_k = 1e-2
+	# sing_res = pres
+	# p_l = np.linspace(1e-3,k-eps_k,pres/2.)
+	# p_sing = np.linspace(k-eps_k,k+eps_k,sing_res)	
+	# p_r = np.linspace(k+eps_k,pmax,pres/2.)
 
-	p = np.concatenate((p_l,p_sing,p_r))
+	# p = np.concatenate((p_l,p_sing,p_r))
+	# p = np.unique(p) # remove duplicates
+
+
+	# use Gauss-Chebyshev points for integral evaluation
+	# weights, p = cheb.getPointsAndWeights(0,pmax,10)
+
+	# plt.ioff()
+	# plt.figure()
+	# plt.plot(p)
+	# plt.show()
+	# exit()
 
 	'''
 	2D mesh of p values for performing integration with matrices. Rows correspond to
@@ -1452,14 +1510,16 @@ def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even
 
 		qt = 1/(2*w*mu*P) * abs(Bc(p))/(B[m]+Bc(p)) * ( \
 			2*B[m]*G(m,p) \
-			+ np.sum([  (B[m]-B[j])*a[j]*G(j,p) for j in range(N) ]) \
+			+ np.sum([  (B[m]-B[j])*a[j]*G(j,p) for j in range(N) ], axis=0) \
 			# + sp.integrate.quad(integrand, x=p, axis=0) \
-			+ np.trapz(integrand, x=p, axis=0) \
+			+ sp.integrate.simps(integrand, x=p, axis=0) \
+			# + np.trapz(integrand, x=p, axis=0) \
 			+ qr * (B[m]-Bc(p)) * pi * Bt(p)*Br(p)*2*np.real(Dr(p))
 			)
 
 		a_prev = a
-		a = [1/(4*w*mu*P) * np.trapz(qt * (B[j]-Bc(p)) * G(j,p), x=p) for j in range(N)]; a = np.array(a);
+		a = [1/(4*w*mu*P) * sp.integrate.simps(qt * (B[j]-Bc(p)) * G(j,p), x=p) for j in range(N)]; a = np.array(a);
+		# a = [1/(4*w*mu*P) * np.trapz(qt * (B[j]-Bc(p)) * G(j,p), x=p) for j in range(N)]; a = np.array(a);
 
 		integrand = (Hr(qt,p2,p1) - Hr(qt,p2,p2))/(p2**2 - p1**2) # blows up at p1=p2
 		integrand = smoothMatrix(integrand)
@@ -1475,13 +1535,22 @@ def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even
 		# 	plt.figure()
 		# 	# print sp.log10(abs(integrand[250,0]))
 		# 	# print sp.log10(abs(integrand[250,1]))
+		# 	plt.imshow(np.real((Hr(qt,p2,p1) - Hr(qt,p2,p2))/(p2 + p1)), extent = putil.getExtent(p/k,p/k))
 		# 	# plt.imshow(sp.log10(abs(Ht(qr,p1,p2))), extent = putil.getExtent(p/k,p/k))
-		# 	plt.imshow(sp.log10(abs(integrand)), extent = putil.getExtent(p/k,p/k))
+		# 	# plt.imshow(sp.log10(abs(integrand)), extent = putil.getExtent(p/k,p/k))
 		# 	plt.colorbar()
 		# 	plt.show()
 		# 	exit()
 
-		qr = 1/(4*w*mu*P) * abs(Bc(p))/Bc(p) * np.trapz(integrand, x=p, axis=0)
+		qr = 1/(4*w*mu*P) * abs(Bc(p))/Bc(p) * sp.integrate.simps(integrand, x=p, axis=0)
+		# qr = 1/(4*w*mu*P) * abs(Bc(p))/Bc(p) * np.trapz(integrand, x=p, axis=0)
+
+		if returnMode and i == returnItr:
+			# bail and return whatever value we're testing
+			if returnMode == 'qt': return (p,qt)
+			if returnMode == 'qr': return (p,qr)
+			if returnMode == 'a_integral': return (p,qt * (B[j]-Bc(p)) * G(j,p))
+
 
 		# Test for convergence
 		delta = abs(a_prev-a)
@@ -1519,13 +1588,190 @@ def ReflectionWithHamidsCorrections(kd,n,incident_mode=0,pol='TE',polarity='even
 	else:
 		return a * np.nan, np.array(np.nan)
 
+def ReflectionWithRecursion(kd,n,incident_mode=0,pol='TE',polarity='even',
+	p_max=20,p_res=1e3,imax=100,convergence_threshold=1e-5,first_order=False, debug=False, returnMode = None, returnItr = 0):
 
+	'''
+	Again attempting to use recursion with a depth setting, but this time using fixed quadrature methods
+	to handle singularities in the integrals
+	'''
+
+	debug = False
+
+	m = incident_mode
+
+	# constants
+	wl = 10. # Set to 10 to match Gelin values for qt
+	k = 2*pi/wl
+	d = kd/k
+	w = c*k
+	eps = n**2
+
+	# Solve slab for all modes
+	N = numModes(n,1,kd)
+	B = beta_marcuse(n,d,wl=wl,pol='TE',polarity='even',Nmodes=N,plot=False)
+
+	# Define Wavevectors
+	g  = sqrt(      -k**2 + B**2)						# transverse wavevectors in air for guided modes
+	K  = sqrt(n**2 * k**2 - B**2)						# transverse wavevectors in high-index region for guided modes
+
+	Bc = lambda p: sqrt(k**2 - p**2)
+	o  = lambda p: sqrt((n*k)**2 - Bc(p)**2)
+
+	# Mode Amplitude Coefficients
+	P = 1
+
+	A = sqrt(2*w*mu*P / (B*d + B/g)) # Tested for both even and odd
+
+	Bt = lambda p: sqrt(2*w*mu*P / (pi*abs(Bc(p))))
+	Br = lambda p: sqrt(2*p**2*w*mu*P / (pi*abs(Bc(p))*(p**2*cos(o(p)*d)**2 + o(p)**2*sin(o(p)*d)**2)))
+	Dr = lambda p: 1/2. * exp(-1j*p*d) * (cos(o(p)*d) + 1j*o(p)/p * sin(o(p)*d))
+
+	# Define Helper functions for integrals
+
+	G = lambda m,p: 2 * k**2 * (eps-1) * A[m] * Bt(p) * cos(K[m]*d) * (g[m]*cos(p*d) - p*sin(p*d)) / ((K[m]**2 - p**2)*(g[m]**2 + p**2))
+
+	def Ht(a,b):
+		return -qr(a) * (B[m]  - Bc(a)) * k**2 * (eps-1) * Bt(b) * Br(a) * (  sin( (o(a)+b) *d)/(o(a)+b)  +  sin( (o(a)-b) *d)/(o(a)-b)  )
+
+	def Hr(a,b):
+		return -qt(b) * (Bc(b) - Bc(a)) * k**2 * (eps-1) * Bt(b) * Br(a) * (  sin( (o(a)+b) *d)/(o(a)+b)  +  sin( (o(a)-b) *d)/(o(a)-b)  )
+
+
+	def qr(p,recursion_level):
+		'''
+		Based on p, decide which order the singularities appear. Break the integration bounds
+		into regions such that one singularity appears in each. Then, use the appropriate method 
+		to estimate the value of each integral.
+
+		For the region containing p = ko, apply Gauss-Chebyshev. For that containing p'=p, subtract the 
+		value of the singularity (ie. Hamid's approach), or consider one of the polynomial methods.
+
+		For all regions, the integral bounds are from [0,a), then [a,b), and finally [b,inf)
+		b always needs to be some p_max such that the remainder of the integral is below some epsilon.
+
+		Note to self, in this function p is the desired variable, x (ie p') is the integration variable
+		'''
+
+		if recursion_level > 0:
+
+			Ht = lambda x: -qr(x, recursion_level-1) * (B[m]  - Bc(x)) * k**2 * (eps-1) * Bt(p) * Br(x) * (  sin( (o(x)+p) *d)/(o(x)+p)  +  sin( (o(x)-p) *d)/(o(x)-p)  )
+			integrand = lambda x: (Ht(x)-Ht(p))/(x**2-p**2)
+
+			if p == k:
+				# undefined. We should never be testing this point, if at all avoidable
+				return 0
+
+			elif p < k:
+				# Here, we will encounter the p'= p problem before p'= ko
+				# a is the midpoint between p and ko
+				# b is an equal distance greater than ko
+
+				a = (k-p)/2.
+				b = p_max*k
+
+				I1 = sp.integrate.fixed_quad(integrand,0,a,n=5) # change n as needed for better accuracy. Should converge above some level.
+
+				xs, weights = cheb.getPointsAndWeights(a,b,5)
+				I2 = np.sum( [weights[i] * Ht(k*xs[i]) / sqrt(1-k**2 * x[i]**2) for i in range(len(xs))] )
+
+			elif p > k:
+				# Here, we will encounter the p'= ko problem before p'= p
+				# a is ko/2
+				# b is the midpoint between ko and p
+
+				a = (p-k)/2.
+				b = p_max*k
+
+				xs, weights = cheb.getPointsAndWeights(0,a,5)
+				I1 = np.sum( [weights[i] * Ht(k*xs[i]) / sqrt(1-k**2 * x[i]**2) for i in range(len(xs))] )
+
+				I2 = sp.integrate.fixed_quad(integrand,a,b,n=5) # change n as needed for better accuracy. Should converge above some level.
+
+			# put everything together
+
+			return 1/(2*w*mu*P) * abs(Bc(p))/(B[m] + Bc(p)) * ( \
+					2*B[m]*G(m,p) + \
+					np.sum( [(B[m] - B[n]) * an(recursion_level-1)[n] * G(n,p) for n in range(len(an))] ) + \
+					I1 + I2 + \
+					qr(p,recursion_level-1)*(B[m]-Bc(p))*pi*Bt(p)*Br(p)*[Dr(p) + Dr(p).conj] \
+				)
+
+		else:
+			# recursion_level == 0
+			return 1/(2*w*mu*P) * abs(Bc(p))/(B[m] + Bc(p)) * ( 2*B[m]*G(m,p) )
+
+	def an(recursion_level):
+		returnVal = []
+		integrand = lambda p,n: qt(p,recursion_level)*(B[n]-Bc(p))*G(n,p)
+
+		for n in range(len(B)):
+			val = 1/(4*w*mu*P) * sp.integrate.fixed_quad(integrand,0,p_max*k,n=5)
+			returnVal.append(val)
+
+		return returnVal
+
+	def qr(p,recursion_level):
+
+		Ht = lambda x: -qt(x, recursion_level) * (Bc(p)  - Bc(x)) * k**2 * (eps-1) * Bt(x) * Br(p) * (  sin( (o(x)+p) *d)/(o(x)+p)  +  sin( (o(x)-p) *d)/(o(x)-p)  )
+		integrand = lambda x: (Ht(x)-Ht(p))/(x**2-p**2)
+
+
+
+
+	'''
+	End of ReflectionWithRecursion
+	'''
+
+def TestHarness():
+
+	# Define Key Simulation Parameters
+	
+	# To convert into the d = h/wl notation for dielectricSlab, use:
+	# kd = d*pi/n
+
+	kd = 0.8
+
+	n = sqrt(20)
+
+	res = [100,200,1000,2000]
+	incident_mode = 0
+	pol='TE'
+	polarity = 'even'
+
+	imax = 200
+	p_max = 10
+
+	method = ReflectionWithHamidsCorrections
+	returnMode = "a_integral"
+	returnItr = 1
+
+	for i,r in enumerate(res):
+		returnVal = method(kd,n,
+										pol=pol,
+										polarity=polarity,
+										incident_mode=incident_mode,
+										p_res=r,
+										imax=imax,
+										p_max=p_max,
+										first_order=False,
+										debug=False,
+										returnMode = returnMode,
+										returnItr = returnItr
+										)
+
+		plt.plot(returnVal[0],returnVal[1])
+
+	plt.legend(res, loc='best')
+	plt.show()
 
 if __name__ == '__main__':
 	# ReflectionWithHamidsCorrections(0.0242424252323,sqrt(20),p_res=500,p_max=5)
   # test_quad()
+  test_beta_marcuse_hamid()
   # test_beta_marcuse()
   # convergence_test_single()
-  main()
+  # main()	
   # PrettyPlots()
 	# dummy()
+	# TestHarness()
